@@ -29,6 +29,7 @@ SevaPath is designed strictly following the lightweight, academic, and privacy-f
 - **Backend**: Python 3, Flask Application Factory pattern.
 - **Database**: SQLite with strict `PRAGMA foreign_keys = ON;` enforcement and normalized tables.
 - **Bilingual System**: Reusable English & Tamil (`ta`) translation dictionary and contextual templates (no duplicated HTML pages).
+- **Academic DFA Engine**: Mathematically genuine Deterministic Finite Automaton $M = (Q, \Sigma, \delta, q_0, F)$ tracking document readiness with bitmask states, absorbing sink state $q_{sink}$, order-independence, and live SVG state visualization.
 - **Privacy & Security**: Zero Aadhaar numbers collected, no citizen file uploads stored, parameterized SQL queries against SQL injection.
 
 ```

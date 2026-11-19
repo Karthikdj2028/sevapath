@@ -7,7 +7,8 @@ and query helpers for services, requirements, and translations.
 
 import os
 import sqlite3
-from typing import List, Dict, Any, Optional
+import uuid
+from typing import List, Dict, Any, Optional, Set, Tuple
 from flask import g, current_app
 
 
@@ -222,3 +223,149 @@ def get_service_by_slug(slug: str, lang_code: str = "en") -> Optional[Dict[str, 
     req_rows = db.execute(req_query, (lang_code, service_dict["id"])).fetchall()
     service_dict["requirements"] = [dict(r) for r in req_rows]
     return service_dict
+
+from app.core.dfa_engine import ServiceDFA, Requirement
+
+
+def get_or_create_session(service_id: int, session_token: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Retrieves an existing preparation session or creates a new one securely.
+    
+    Security & Validation:
+    - If session_token is provided, ensures it exists AND belongs strictly to the requested service_id.
+    - If token is invalid, hijacked, or belongs to another service, creates a fresh isolated session.
+    """
+    db = get_db()
+    if session_token:
+        row = db.execute(
+            "SELECT id, session_token, service_id FROM preparation_sessions WHERE session_token = ? AND service_id = ?",
+            (session_token, service_id)
+        ).fetchone()
+        if row:
+            return {"session_id": row["id"], "session_token": row["session_token"], "service_id": row["service_id"]}
+
+    # Generate fresh secure cryptographically sound UUID token
+    new_token = uuid.uuid4().hex
+    cur = db.execute(
+        "INSERT INTO preparation_sessions (session_token, service_id) VALUES (?, ?)",
+        (new_token, service_id)
+    )
+    db.commit()
+    return {"session_id": cur.lastrowid, "session_token": new_token, "service_id": service_id}
+
+
+def get_session_completed_keys(session_id: int) -> Set[str]:
+    """Retrieves all requirement_codes marked completed for a given session."""
+    db = get_db()
+    rows = db.execute(
+        """SELECT r.requirement_code 
+           FROM session_items si
+           JOIN requirements r ON si.requirement_id = r.id
+           WHERE si.session_id = ? AND si.is_completed = 1""",
+        (session_id,)
+    ).fetchall()
+    return {row["requirement_code"] for row in rows}
+
+
+def update_session_requirement(
+    session_id: int,
+    service_id: int,
+    req_code: str,
+    is_completed: bool
+) -> Tuple[bool, Optional[str]]:
+    """
+    Updates the completion status of a requirement within a session.
+    
+    Safety:
+    - Validates that req_code genuinely belongs to service_id.
+    - Rejects invalid IDs without altering or corrupting persisted session state.
+    
+    Returns:
+        Tuple[bool, Optional[str]]: (success, error_message)
+    """
+    db = get_db()
+    
+    # 1. Validate session exists and belongs to service_id
+    sess_row = db.execute(
+        "SELECT id FROM preparation_sessions WHERE id = ? AND service_id = ?",
+        (session_id, service_id)
+    ).fetchone()
+    if not sess_row:
+        return False, "Invalid or unauthorized session token for this service."
+
+    # 2. Validate requirement exists and belongs strictly to this service
+    req_row = db.execute(
+        "SELECT id FROM requirements WHERE service_id = ? AND requirement_code = ?",
+        (service_id, req_code)
+    ).fetchone()
+    if not req_row:
+        return False, f"Requirement '{req_code}' does not belong to this service."
+
+    req_id = req_row["id"]
+    completed_val = 1 if is_completed else 0
+
+    # 3. Upsert session item
+    db.execute(
+        """INSERT INTO session_items (session_id, requirement_id, is_completed, updated_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(session_id, requirement_id) 
+           DO UPDATE SET is_completed = ?, updated_at = CURRENT_TIMESTAMP""",
+        (session_id, req_id, completed_val, completed_val)
+    )
+    db.commit()
+    return True, None
+
+
+def reset_session_progress(session_id: int, service_id: int) -> bool:
+    """Resets all completed requirements for a session back to initial state q_0."""
+    db = get_db()
+    # Validate session ownership
+    sess_row = db.execute(
+        "SELECT id FROM preparation_sessions WHERE id = ? AND service_id = ?",
+        (session_id, service_id)
+    ).fetchone()
+    if not sess_row:
+        return False
+
+    db.execute("DELETE FROM session_items WHERE session_id = ?", (session_id,))
+    db.commit()
+    return True
+
+
+def build_service_dfa(
+    slug: str,
+    lang_code: str = "en",
+    active_conditions: Optional[Dict[str, bool]] = None
+) -> Tuple[Optional[ServiceDFA], Optional[Dict[str, Any]]]:
+    """
+    Constructs a ServiceDFA instance populated directly from the SQLite database.
+    """
+    service = get_service_by_slug(slug, lang_code=lang_code)
+    if not service:
+        return None, None
+
+    requirements = []
+    for r in service["requirements"]:
+        is_mand = bool(r["is_mandatory"])
+        # Check if conditional (e.g. pan_it_return or salary slip)
+        is_cond = (r["requirement_code"] == "pan_it_return")
+        cond_key = "is_it_assessee" if is_cond else None
+
+        req_obj = Requirement(
+            key=r["requirement_code"],
+            name_en=r["title"],
+            name_ta=r["title"],
+            is_mandatory=is_mand,
+            is_conditional=is_cond,
+            condition_key=cond_key,
+            description=r.get("description", ""),
+            help_text=r.get("help_text", "")
+        )
+        requirements.append(req_obj)
+
+    dfa = ServiceDFA(
+        service_id=slug,
+        requirements=requirements,
+        active_conditions=active_conditions
+    )
+    return dfa, service

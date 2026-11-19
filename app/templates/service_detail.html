@@ -3,7 +3,7 @@
 {% block title %}{{ service.name }} – {{ t('app_name') }}{% endblock %}
 
 {% block content %}
-<div class="container py-5">
+<div class="container py-5" data-service-slug="{{ service.slug }}" data-lang="{{ current_lang }}">
   <!-- Breadcrumb -->
   <nav aria-label="breadcrumb" class="mb-4">
     <ol class="breadcrumb">
@@ -49,59 +49,160 @@
       </div>
       <div class="col-sm-4">
         <div class="stat-pill text-center">
-          <span class="stat-label">Official Source</span>
+          <span class="stat-label">Official Portal</span>
           <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer" class="stat-val text-decoration-none">
             {{ service.portal_name }} ↗
           </a>
         </div>
       </div>
     </div>
-
-    {% if service.benefits %}
-      <div class="alert alert-light border mt-3 mb-0">
-        <strong>💡 Key Benefits & Usage:</strong> {{ service.benefits }}
-      </div>
-    {% endif %}
   </div>
 
-  <!-- Requirements Checklist Overview -->
-  <div class="card border-0 shadow-sm p-4 bg-white rounded-3 mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+  <!-- DFA Preparation Engine Live Dashboard -->
+  <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3" id="dfaDashboard">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <div>
-        <h3 class="fw-bold mb-1">Required Documents Checklist</h3>
-        <p class="text-muted small mb-0">Review the mandatory and supporting proofs required for application submission.</p>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-1">
+          ⚙️ {{ t('dfa_engine_badge') }}
+        </span>
+        <h3 class="fw-bold mb-0 text-dark">{{ t('readiness_status') }}</h3>
       </div>
-      <span class="badge bg-primary fs-6">{{ service.requirements|length }} Total Items</span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-light text-dark border fs-6 px-3 py-2" id="stateLabelBadge">
+          {{ t('current_state_label') }}: <strong class="text-primary" id="currentStateDisplay">q₀</strong>
+        </span>
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2" id="acceptanceBadge">
+          ⏳ {{ t('state_in_progress') }}
+        </span>
+        <button class="btn btn-outline-danger btn-sm" id="btnResetProgress" title="{{ t('btn_reset_progress') }}">
+          ↺ {{ t('btn_reset_progress') }}
+        </button>
+      </div>
     </div>
 
-    <div class="list-group list-group-flush">
-      {% for req in service.requirements %}
-        <div class="list-group-item px-0 py-3 d-flex gap-3 align-items-start">
-          <div class="fs-4 mt-1">
-            {% if req.is_mandatory %}
-              <span class="text-danger" title="Mandatory Requirement">●</span>
-            {% else %}
-              <span class="text-secondary" title="Optional / Supporting Requirement">○</span>
-            {% endif %}
-          </div>
-          <div class="flex-grow-1">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-              <h5 class="fw-semibold mb-0">{{ req.title }}</h5>
-              {% if req.is_mandatory %}
-                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Mandatory</span>
-              {% else %}
-                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Supporting / Optional</span>
-              {% endif %}
-            </div>
-            <p class="text-secondary small mb-1">{{ req.description }}</p>
-            {% if req.help_text %}
-              <div class="small text-muted bg-light p-2 rounded border">
-                ℹ️ <em>{{ req.help_text }}</em>
-              </div>
-            {% endif %}
-          </div>
+    <!-- Progress Bar -->
+    <div class="mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="small text-muted fw-semibold">Mandatory Requirement Completion</span>
+        <span class="fw-bold fs-5 text-primary" id="readinessPercentDisplay">0.0%</span>
+      </div>
+      <div class="progress" style="height: 14px;">
+        <div id="readinessProgressBar" 
+             class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+             role="progressbar" 
+             style="width: 0%;" 
+             aria-valuenow="0" 
+             aria-valuemin="0" 
+             aria-valuemax="100">
         </div>
-      {% endfor %}
+      </div>
+    </div>
+
+    <!-- Compact Progress Counters -->
+    <div class="row g-2 text-center pt-2 border-top">
+      <div class="col-4">
+        <span class="text-muted small d-block">Completed</span>
+        <span class="fw-bold fs-5 text-success" id="completedCountDisplay">0</span>
+      </div>
+      <div class="col-4">
+        <span class="text-muted small d-block">Remaining</span>
+        <span class="fw-bold fs-5 text-danger" id="remainingCountDisplay">{{ service.requirements|length }}</span>
+      </div>
+      <div class="col-4">
+        <span class="text-muted small d-block">Applicable Total</span>
+        <span class="fw-bold fs-5 text-dark" id="totalCountDisplay">{{ service.requirements|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- Left Column: Interactive Document Checklist -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm p-4 bg-white rounded-3 h-100">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h4 class="fw-bold mb-0">📋 Document Preparation Checklist</h4>
+          <span class="badge bg-secondary-subtle text-secondary small">Order Independent</span>
+        </div>
+        <p class="text-muted small mb-3">
+          Check off documents as you prepare them. The Python DFA automaton transitions states in real time.
+        </p>
+
+        <div class="list-group list-group-flush" id="checklistGroup">
+          {% for req in service.requirements %}
+            <div class="list-group-item px-0 py-3 d-flex gap-3 align-items-start checklist-item" 
+                 id="item-row-{{ req.requirement_code }}">
+              <div class="form-check pt-1 fs-5">
+                <input class="form-check-input checklist-checkbox" 
+                       type="checkbox" 
+                       value="{{ req.requirement_code }}" 
+                       id="check-{{ req.requirement_code }}" 
+                       data-req-code="{{ req.requirement_code }}">
+              </div>
+              <div class="flex-grow-1">
+                <label class="form-check-label d-block cursor-pointer" for="check-{{ req.requirement_code }}">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <h5 class="fw-semibold mb-0 req-title" id="title-{{ req.requirement_code }}">{{ req.title }}</h5>
+                    {% if req.requirement_code == 'pan_it_return' %}
+                      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning">{{ t('conditional_badge') }}</span>
+                    {% elif req.is_mandatory %}
+                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ t('mandatory_badge') }}</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ t('optional_badge') }}</span>
+                    {% endif %}
+                  </div>
+                  <p class="text-secondary small mb-1">{{ req.description }}</p>
+                  {% if req.help_text %}
+                    <div class="small text-muted bg-light p-2 rounded border mt-1">
+                      ℹ️ <em>{{ req.help_text }}</em>
+                    </div>
+                  {% endif %}
+                </label>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Interactive DFA Graph & Summary -->
+    <div class="col-lg-5">
+      <!-- DFA Visualizer Card -->
+      <div class="card border-0 shadow-sm p-4 bg-white rounded-3 mb-4">
+        <div class="mb-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <h5 class="fw-bold mb-0">📊 {{ t('dfa_viz_title') }}</h5>
+            <span class="badge bg-primary">DFA (Q, Σ, δ, q₀, F)</span>
+          </div>
+          <p class="text-muted small mb-0">{{ t('dfa_viz_subtitle') }}</p>
+        </div>
+
+        <!-- SVG Container for DFA Visualizer -->
+        <div id="dfaVizContainer" class="border rounded bg-light p-2 text-center" style="min-height: 220px;">
+          <div class="text-muted py-5 small">Initializing DFA state graph...</div>
+        </div>
+
+        <!-- DFA Graph Legend -->
+        <div class="d-flex flex-wrap gap-2 justify-content-between small text-muted border-top pt-2 mt-2">
+          <span><span class="badge rounded-circle bg-light border text-dark">q₀</span> {{ t('legend_initial') }}</span>
+          <span><span class="badge rounded-circle bg-primary text-white">q</span> {{ t('legend_current') }}</span>
+          <span><span class="badge rounded-circle bg-success text-white">F</span> {{ t('legend_accepting') }}</span>
+        </div>
+      </div>
+
+      <!-- Preparation Summary Breakdown -->
+      <div class="card border-0 shadow-sm p-4 bg-white rounded-3">
+        <h5 class="fw-bold mb-3">📑 Status Breakdown</h5>
+        
+        <h6 class="text-success small fw-bold mb-2">✓ {{ t('completed_docs_title') }}</h6>
+        <ul class="list-unstyled small mb-3 ps-2" id="completedDocsList">
+          <li class="text-muted fst-italic">None yet</li>
+        </ul>
+
+        <h6 class="text-danger small fw-bold mb-2">● {{ t('remaining_docs_title') }}</h6>
+        <ul class="list-unstyled small mb-0 ps-2" id="remainingDocsList">
+          <li class="text-muted fst-italic">Loading...</li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -117,4 +218,190 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/dfa_visualizer.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const containerEl = document.querySelector("[data-service-slug]");
+  if (!containerEl) return;
+
+  const slug = containerEl.getAttribute("data-service-slug");
+  const lang = containerEl.getAttribute("data-lang") || "en";
+  const storageKey = `sevapath_session_${slug}`;
+  let sessionToken = localStorage.getItem(storageKey) || "";
+
+  // Visualizer instance
+  const visualizer = new DFAVisualizer("dfaVizContainer", {
+    width: 480,
+    height: 220,
+    nodeRadius: 20
+  });
+
+  // UI elements
+  const currentStateDisplay = document.getElementById("currentStateDisplay");
+  const readinessPercentDisplay = document.getElementById("readinessPercentDisplay");
+  const readinessProgressBar = document.getElementById("readinessProgressBar");
+  const acceptanceBadge = document.getElementById("acceptanceBadge");
+  const completedCountDisplay = document.getElementById("completedCountDisplay");
+  const remainingCountDisplay = document.getElementById("remainingCountDisplay");
+  const totalCountDisplay = document.getElementById("totalCountDisplay");
+  const completedDocsList = document.getElementById("completedDocsList");
+  const remainingDocsList = document.getElementById("remainingDocsList");
+  const btnReset = document.getElementById("btnResetProgress");
+
+  // Fetch initial state
+  function fetchState() {
+    let url = `/api/service/${slug}/state?lang=${lang}`;
+    if (sessionToken) url += `&session_token=${encodeURIComponent(sessionToken)}`;
+
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          sessionToken = data.session_token;
+          localStorage.setItem(storageKey, sessionToken);
+          updateUI(data.progress, data.visualization);
+        }
+      })
+      .catch(err => console.error("Error loading DFA state:", err));
+  }
+
+  // Update DOM components reactively
+  function updateUI(progress, visualization) {
+    if (!progress) return;
+
+    // 1. Current State Label
+    currentStateDisplay.textContent = progress.state_label;
+
+    // 2. Readiness & Progress Bar
+    const readiness = progress.readiness_percentage;
+    readinessPercentDisplay.textContent = `${readiness}%`;
+    readinessProgressBar.style.width = `${readiness}%`;
+    readinessProgressBar.setAttribute("aria-valuenow", readiness);
+
+    if (readiness === 100.0) {
+      readinessProgressBar.className = "progress-bar bg-success";
+    } else {
+      readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
+    }
+
+    // 3. Acceptance Badge
+    if (progress.is_accepting) {
+      acceptanceBadge.className = "badge bg-success fs-6 px-3 py-2";
+      acceptanceBadge.innerHTML = "✓ Ready to Apply (Accepting F)";
+    } else if (progress.is_sink) {
+      acceptanceBadge.className = "badge bg-danger fs-6 px-3 py-2";
+      acceptanceBadge.innerHTML = "✕ Error State (q_sink)";
+    } else {
+      acceptanceBadge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2";
+      acceptanceBadge.innerHTML = "⏳ In Progress";
+    }
+
+    // 4. Counters
+    completedCountDisplay.textContent = progress.completed_count;
+    remainingCountDisplay.textContent = progress.remaining_count;
+    totalCountDisplay.textContent = progress.total_applicable_requirements;
+
+    // 5. Checkboxes state sync
+    const completedKeySet = new Set(progress.completed_documents.map(d => d.key));
+    document.querySelectorAll(".checklist-checkbox").forEach(cb => {
+      const code = cb.getAttribute("data-req-code");
+      const isDone = completedKeySet.has(code);
+      cb.checked = isDone;
+
+      const row = document.getElementById(`item-row-${code}`);
+      if (row) {
+        if (isDone) {
+          row.classList.add("bg-success-subtle");
+        } else {
+          row.classList.remove("bg-success-subtle");
+        }
+      }
+    });
+
+    // 6. Summary Lists
+    if (progress.completed_documents.length === 0) {
+      completedDocsList.innerHTML = '<li class="text-muted fst-italic">None yet</li>';
+    } else {
+      completedDocsList.innerHTML = progress.completed_documents.map(d => 
+        `<li class="text-success fw-semibold">✓ ${d.name_en || d.key}</li>`
+      ).join("");
+    }
+
+    if (progress.remaining_documents.length === 0) {
+      remainingDocsList.innerHTML = '<li class="text-success fst-italic">🎉 All requirements completed!</li>';
+    } else {
+      remainingDocsList.innerHTML = progress.remaining_documents.map(d => {
+        const mark = d.is_mandatory ? '<span class="text-danger">●</span>' : '<span class="text-muted">○</span>';
+        return `<li>${mark} ${d.name_en || d.key}</li>`;
+      }).join("");
+    }
+
+    // 7. Render DFA Visualization
+    if (visualization) {
+      visualizer.render(visualization);
+    }
+  }
+
+  // Handle Checkbox Toggles
+  document.querySelectorAll(".checklist-checkbox").forEach(cb => {
+    cb.addEventListener("change", function () {
+      const reqCode = this.getAttribute("data-req-code");
+      const isCompleted = this.checked;
+
+      fetch(`/api/service/${slug}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_token: sessionToken,
+          requirement_code: reqCode,
+          is_completed: isCompleted,
+          lang: lang
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          updateUI(data.progress, data.visualization);
+        } else {
+          alert("Error: " + (data.error || "Failed to update"));
+          cb.checked = !isCompleted; // revert on error
+        }
+      })
+      .catch(err => {
+        console.error("Toggle error:", err);
+        cb.checked = !isCompleted;
+      });
+    });
+  });
+
+  // Handle Reset Progress
+  if (btnReset) {
+    btnReset.addEventListener("click", function () {
+      if (!confirm("Are you sure you want to reset your preparation progress for this service?")) return;
+
+      fetch(`/api/service/${slug}/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_token: sessionToken,
+          lang: lang
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          updateUI(data.progress, data.visualization);
+        }
+      })
+      .catch(err => console.error("Reset error:", err));
+    });
+  }
+
+  // Initial load
+  fetchState();
+});
+</script>
 {% endblock %}
