@@ -232,6 +232,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const storageKey = `sevapath_session_${slug}`;
   let sessionToken = localStorage.getItem(storageKey) || "";
 
+  // CSRF token retrieval
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  let csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : "";
+
   // Visualizer instance
   const visualizer = new DFAVisualizer("dfaVizContainer", {
     width: 480,
@@ -261,6 +265,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .then(data => {
         if (data.status === "success") {
           sessionToken = data.session_token;
+          if (data.csrf_token) csrfToken = data.csrf_token;
           localStorage.setItem(storageKey, sessionToken);
           updateUI(data.progress, data.visualization);
         }
@@ -353,7 +358,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       fetch(`/api/service/${slug}/toggle`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
         body: JSON.stringify({
           session_token: sessionToken,
           requirement_code: reqCode,
@@ -384,7 +392,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       fetch(`/api/service/${slug}/reset`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
         body: JSON.stringify({
           session_token: sessionToken,
           lang: lang

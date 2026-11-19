@@ -17,7 +17,7 @@ SERVICES_SEED_DATA = [
             "verification_date": "2026-01-15",
             "jurisdiction": "Tamil Nadu, India",
             "is_verified": 1,
-            "notes": "Standard citizen service REV-101. Standard fee ₹60 prescribed by TNeGA.",
+            "notes": "Standard citizen service REV-103. Standard fee ₹60 prescribed by TNeGA.",
         },
         "translations": {
             "en": {
@@ -119,7 +119,7 @@ SERVICES_SEED_DATA = [
             "verification_date": "2026-01-15",
             "jurisdiction": "Tamil Nadu, India",
             "is_verified": 1,
-            "notes": "Standard citizen service REV-102. Issued by Revenue Tahsildar / Headquarters Deputy Tahsildar.",
+            "notes": "Standard citizen service REV-101. Issued by Revenue Tahsildar / Headquarters Deputy Tahsildar.",
         },
         "translations": {
             "en": {
@@ -221,7 +221,7 @@ SERVICES_SEED_DATA = [
             "verification_date": "2026-01-15",
             "jurisdiction": "Tamil Nadu, India",
             "is_verified": 1,
-            "notes": "Standard citizen service REV-103. Proves permanent residency/nativity in Tamil Nadu.",
+            "notes": "Standard citizen service REV-102. Proves permanent residency/nativity in Tamil Nadu.",
         },
         "translations": {
             "en": {

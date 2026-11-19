@@ -13,6 +13,11 @@ class Config:
     SUPPORTED_LANGUAGES = ["en", "ta"]
     TESTING = False
 
+    # Session & Cookie Security (OWASP aligned)
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = False  # Enabled in ProductionConfig for HTTPS
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
@@ -29,6 +34,7 @@ class TestingConfig(Config):
 class ProductionConfig(Config):
     """Production configuration."""
     DEBUG = False
+    SESSION_COOKIE_SECURE = True  # Strict HTTPS in production
 
 
 config_by_name = {

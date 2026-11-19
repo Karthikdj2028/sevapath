@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, session
 from config import config_by_name
 from app.models.database import close_db, init_db
 from app.translations import get_translation, TRANSLATIONS
+from app.core.security import get_csrf_token
 
 
 def create_app(config_name: str = "default") -> Flask:
@@ -42,6 +43,7 @@ def create_app(config_name: str = "default") -> Flask:
             "current_lang": lang,
             "supported_languages": app.config["SUPPORTED_LANGUAGES"],
             "t": translate,
+            "csrf_token": get_csrf_token,
         }
 
     # Error handlers
