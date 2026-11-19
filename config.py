@@ -35,6 +35,8 @@ class ProductionConfig(Config):
     """Production configuration."""
     DEBUG = False
     SESSION_COOKIE_SECURE = True  # Strict HTTPS in production
+    # In production, require SECRET_KEY strictly from environment (no insecure fallback)
+    SECRET_KEY = None
 
 
 config_by_name = {

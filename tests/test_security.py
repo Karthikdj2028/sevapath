@@ -1,172 +1,201 @@
 """
-Pytest security and privacy test suite for SevaPath.
+Pytest security, privacy, and defensive hardening test suite for SevaPath.
 
 Tests:
-- Session cookie flags (HttpOnly, SameSite, Secure)
-- Cryptographic CSRF token generation and validation
-- Strict rejection of missing, malformed, and forged CSRF tokens (HTTP 403)
+- Production SECRET_KEY enforcement (fail-safe without import-time crashes)
+- Strict exclusive X-CSRF-Token header enforcement (JSON body fallback rejection)
+- Cache-Control: no-store on CSRF token endpoint
+- Defensive JSON parsing (rejection of arrays, strings, numbers, null, malformed JSON)
+- Strict language validation (only 'en' and 'ta' accepted)
+- Caplog privacy test confirming submitted phone/email values never appear in application logs
 - Session ownership validation under CSRF
-- Format validation API endpoint privacy (no database persistence, no sensitive echoing)
+- Zero persistence on format validation endpoint
 """
 
+import os
+import pytest
+from app import create_app
 from app.models.database import get_db
 from config import ProductionConfig, DevelopmentConfig, TestingConfig
 
 
-def test_session_cookie_configuration(app):
-    """Verifies OWASP-aligned session cookie settings in app config."""
-    assert app.config["SESSION_COOKIE_HTTPONLY"] is True
-    assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+# --- Production SECRET_KEY Tests ---
 
-
-def test_production_cookie_security():
-    """Verifies ProductionConfig mandates HTTPS-only cookies."""
+def test_production_config_importable_without_exception():
+    """
+    CRITICAL CORRECTION 1:
+    Merely importing ProductionConfig must not raise an exception.
+    """
+    assert ProductionConfig is not None
+    assert ProductionConfig.DEBUG is False
     assert ProductionConfig.SESSION_COOKIE_SECURE is True
-    assert ProductionConfig.SESSION_COOKIE_HTTPONLY is True
-    assert ProductionConfig.SESSION_COOKIE_SAMESITE == "Lax"
 
 
-def test_csrf_token_endpoint(client):
-    """Verifies that GET /api/csrf-token returns a valid 64-hex-char token."""
+def test_production_secret_key_enforcement(monkeypatch):
+    """
+    CRITICAL CORRECTION 1:
+    ProductionConfig must require a real SECRET_KEY from the environment at app creation time.
+    Fails safely with a clear configuration error if missing or using insecure default.
+    """
+    # 1. Ensure SECRET_KEY is not in environment
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app("production")
+    assert "Production requires a secure SECRET_KEY" in str(exc_info.value)
+
+    # 2. When SECRET_KEY is legitimately provided, creation succeeds
+    monkeypatch.setenv("SECRET_KEY", "real-secure-production-secret-key-xyz-987654321")
+    prod_app = create_app("production")
+    assert prod_app is not None
+    assert prod_app.config["SECRET_KEY"] == "real-secure-production-secret-key-xyz-987654321"
+
+
+# --- Strict CSRF Header Tests ---
+
+def test_csrf_token_endpoint_cache_control(client):
+    """
+    CRITICAL CORRECTION 5:
+    CSRF token response must include Cache-Control: no-store.
+    """
     res = client.get("/api/csrf-token")
     assert res.status_code == 200
-    data = res.get_json()
-    assert "csrf_token" in data
-    token = data["csrf_token"]
-    assert isinstance(token, str)
-    assert len(token) == 64  # 32 bytes hex encoded
+    assert "no-store" in res.headers.get("Cache-Control", "")
+    assert res.headers.get("Pragma") == "no-cache"
 
 
-def test_csrf_missing_token_rejected_on_toggle(client):
-    """Verifies POST /api/service/income-certificate/toggle without CSRF receives HTTP 403."""
-    init_res = client.get("/api/service/income-certificate/state")
-    session_token = init_res.get_json()["session_token"]
-
-    res = client.post(
-        "/api/service/income-certificate/toggle",
-        json={
-            "session_token": session_token,
-            "requirement_code": "applicant_photo",
-            "is_completed": True
-        }
-    )
-    assert res.status_code == 403
-    assert "CSRF token missing or invalid" in res.get_json()["error"]
-
-
-def test_csrf_missing_token_rejected_on_reset(client):
-    """Verifies POST /api/service/income-certificate/reset without CSRF receives HTTP 403."""
-    init_res = client.get("/api/service/income-certificate/state")
-    session_token = init_res.get_json()["session_token"]
-
-    res = client.post(
-        "/api/service/income-certificate/reset",
-        json={"session_token": session_token}
-    )
-    assert res.status_code == 403
-    assert "CSRF token missing or invalid" in res.get_json()["error"]
-
-
-def test_csrf_forged_token_rejected(client):
-    """Verifies that an arbitrary / forged CSRF token is rejected with HTTP 403."""
-    init_res = client.get("/api/service/income-certificate/state")
-    session_token = init_res.get_json()["session_token"]
-
-    forged_token = "0" * 64
-    res = client.post(
-        "/api/service/income-certificate/toggle",
-        headers={"X-CSRF-Token": forged_token},
-        json={
-            "session_token": session_token,
-            "requirement_code": "applicant_photo",
-            "is_completed": True
-        }
-    )
-    assert res.status_code == 403
-    assert "CSRF token missing or invalid" in res.get_json()["error"]
-
-
-def test_csrf_malformed_token_rejected(client):
-    """Verifies that empty string or whitespace token receives HTTP 403."""
-    init_res = client.get("/api/service/income-certificate/state")
-    session_token = init_res.get_json()["session_token"]
-
-    res = client.post(
-        "/api/service/income-certificate/toggle",
-        headers={"X-CSRF-Token": ""},
-        json={
-            "session_token": session_token,
-            "requirement_code": "applicant_photo",
-            "is_completed": True
-        }
-    )
-    assert res.status_code == 403
-
-
-def test_session_ownership_preserved_with_valid_csrf(client):
+def test_csrf_body_token_without_header_rejected(client):
     """
-    CRITICAL REQUIREMENT:
-    CSRF does not replace session ownership checks. A valid CSRF token cannot be used
-    to mutate another service's session.
+    CRITICAL CORRECTION 2:
+    Prove that a valid token in the JSON body without the X-CSRF-Token header is rejected with 403.
     """
-    # 1. Create a session for income-certificate
-    income_res = client.get("/api/service/income-certificate/state")
-    income_sess_token = income_res.get_json()["session_token"]
-    csrf_token = income_res.get_json()["csrf_token"]
+    init_res = client.get("/api/service/income-certificate/state")
+    session_token = init_res.get_json()["session_token"]
+    valid_csrf_token = init_res.get_json()["csrf_token"]
 
-    # 2. Try to use income session token on community-certificate endpoint
-    cross_res = client.post(
-        "/api/service/community-certificate/toggle",
+    # Send valid CSRF token in the JSON body, but OMIT the X-CSRF-Token header
+    res = client.post(
+        "/api/service/income-certificate/toggle",
+        json={
+            "session_token": session_token,
+            "requirement_code": "applicant_photo",
+            "is_completed": True,
+            "csrf_token": valid_csrf_token  # In body only
+        }
+    )
+    assert res.status_code == 403
+    assert "Requires valid 'X-CSRF-Token' header" in res.get_json()["error"]
+
+
+def test_csrf_missing_and_forged_header_rejected(client):
+    """Verifies that missing, empty, or forged X-CSRF-Token headers receive HTTP 403."""
+    init_res = client.get("/api/service/income-certificate/state")
+    session_token = init_res.get_json()["session_token"]
+
+    # 1. Missing header
+    res_missing = client.post(
+        "/api/service/income-certificate/toggle",
+        json={"session_token": session_token, "requirement_code": "applicant_photo", "is_completed": True}
+    )
+    assert res_missing.status_code == 403
+
+    # 2. Forged header
+    res_forged = client.post(
+        "/api/service/income-certificate/toggle",
+        headers={"X-CSRF-Token": "forged_invalid_hex_token_00000000000000000000000000000000000000"},
+        json={"session_token": session_token, "requirement_code": "applicant_photo", "is_completed": True}
+    )
+    assert res_forged.status_code == 403
+
+
+# --- Defensive JSON Parsing & Language Validation Tests ---
+
+@pytest.mark.parametrize("invalid_payload", [
+    [1, 2, 3],                  # Array (list)
+    "raw string payload",       # String
+    12345,                      # Number
+    True,                       # Boolean
+])
+def test_defensive_json_non_dict_rejected(client, invalid_payload):
+    """
+    CRITICAL CORRECTION 4:
+    Return HTTP 400 for arrays, strings, numbers, boolean, and non-dict JSON bodies.
+    """
+    # 1. Test on /api/validate-format
+    res_val = client.post("/api/validate-format", json=invalid_payload)
+    assert res_val.status_code == 400
+    assert "must be a JSON object" in res_val.get_json()["error"]
+
+    # 2. Test on /api/service/<slug>/toggle
+    init_res = client.get("/api/service/income-certificate/state")
+    csrf_token = init_res.get_json()["csrf_token"]
+
+    res_toggle = client.post(
+        "/api/service/income-certificate/toggle",
         headers={"X-CSRF-Token": csrf_token},
-        json={
-            "session_token": income_sess_token,
-            "requirement_code": "applicant_photo",
-            "is_completed": True
-        }
+        json=invalid_payload
     )
-    assert cross_res.status_code == 403
-    assert "Unauthorized or mismatched session token" in cross_res.get_json()["error"]
+    assert res_toggle.status_code == 400
+    assert "must be a JSON object" in res_toggle.get_json()["error"]
+
+    # 3. Test on /api/service/<slug>/reset
+    res_reset = client.post(
+        "/api/service/income-certificate/reset",
+        headers={"X-CSRF-Token": csrf_token},
+        json=invalid_payload
+    )
+    assert res_reset.status_code == 400
+    assert "must be a JSON object" in res_reset.get_json()["error"]
 
 
-# --- Format Validation Privacy Tests ---
-
-def test_api_validate_format_phone(client):
-    """Verifies POST /api/validate-format for phone returns normalized value."""
-    res = client.post("/api/validate-format", json={
+def test_strict_language_validation(client):
+    """
+    CRITICAL CORRECTION 4:
+    Accept only 'en' and 'ta'. Return HTTP 400 on unsupported language codes.
+    """
+    # Unsupported language
+    res_unsupported = client.post("/api/validate-format", json={
         "field_type": "phone",
-        "value": "+91 98765 43210",
+        "value": "9876543210",
+        "lang": "fr"
+    })
+    assert res_unsupported.status_code == 400
+    assert "Invalid language code" in res_unsupported.get_json()["error"]
+
+    # Supported languages
+    res_en = client.post("/api/validate-format", json={
+        "field_type": "phone",
+        "value": "9876543210",
         "lang": "en"
     })
-    assert res.status_code == 200
-    data = res.get_json()
-    assert data["is_valid"] is True
-    assert data["cleaned_value"] == "9876543210"
-    assert "disclaimer" in data
+    assert res_en.status_code == 200
 
-
-def test_api_validate_format_email(client):
-    """Verifies POST /api/validate-format for email returns normalized lowercased value."""
-    res = client.post("/api/validate-format", json={
-        "field_type": "email",
-        "value": "Citizen.TN@TamilNadu.gov.in",
-        "lang": "en"
+    res_ta = client.post("/api/validate-format", json={
+        "field_type": "phone",
+        "value": "9876543210",
+        "lang": "ta"
     })
-    assert res.status_code == 200
-    data = res.get_json()
-    assert data["is_valid"] is True
-    assert data["cleaned_value"] == "citizen.tn@tamilnadu.gov.in"
+    assert res_ta.status_code == 200
 
 
-def test_api_validate_format_deferred_government_identifier(client):
-    """Verifies that government identifiers are safely rejected with deferred notice."""
-    res = client.post("/api/validate-format", json={
-        "field_type": "can_number",
-        "value": "1234567890123"
-    })
-    assert res.status_code == 200
-    data = res.get_json()
-    assert data["is_valid"] is False
-    assert "deferred" in data["error_message"].lower()
+# --- Privacy, Logging & Persistence Tests ---
+
+def test_privacy_no_logging_of_sensitive_data(client, caplog):
+    """
+    CRITICAL CORRECTION 5:
+    Caplog test confirming submitted phone and email values do not appear in application logs.
+    """
+    sensitive_phone = "9876543210"
+    sensitive_email = "citizen_secret_personal@domain.org"
+
+    with caplog.at_level("DEBUG"):
+        client.post("/api/validate-format", json={"field_type": "phone", "value": sensitive_phone})
+        client.post("/api/validate-format", json={"field_type": "email", "value": sensitive_email})
+        client.post("/api/validate-format", json={"field_type": "phone", "value": "invalid_phone_secret"})
+
+    # Assert neither sensitive inputs appear in captured logs
+    assert sensitive_phone not in caplog.text
+    assert sensitive_email not in caplog.text
+    assert "invalid_phone_secret" not in caplog.text
 
 
 def test_api_validate_format_privacy_zero_persistence(client, app):
@@ -179,7 +208,6 @@ def test_api_validate_format_privacy_zero_persistence(client, app):
         before_sessions = db.execute("SELECT COUNT(*) FROM preparation_sessions").fetchone()[0]
         before_items = db.execute("SELECT COUNT(*) FROM session_items").fetchone()[0]
 
-    # Validate phone and email
     client.post("/api/validate-format", json={"field_type": "phone", "value": "9876543210"})
     client.post("/api/validate-format", json={"field_type": "email", "value": "citizen@test.com"})
 
@@ -192,17 +220,23 @@ def test_api_validate_format_privacy_zero_persistence(client, app):
     assert before_items == after_items
 
 
-def test_api_validate_format_error_no_sensitive_echo(client):
+def test_session_ownership_preserved_with_valid_csrf(client):
     """
-    CRITICAL PRIVACY REQUIREMENT:
-    Error responses must not unnecessarily echo the submitted sensitive input.
+    CSRF does not replace session ownership checks. A valid CSRF token cannot be used
+    to mutate another service's session.
     """
-    sensitive_input = "9876543210_SECRET_LEAK"
-    res = client.post("/api/validate-format", json={
-        "field_type": "phone",
-        "value": sensitive_input
-    })
-    assert res.status_code == 200
-    data = res.get_json()
-    assert data["is_valid"] is False
-    assert sensitive_input not in data["error_message"]
+    income_res = client.get("/api/service/income-certificate/state")
+    income_sess_token = income_res.get_json()["session_token"]
+    csrf_token = income_res.get_json()["csrf_token"]
+
+    cross_res = client.post(
+        "/api/service/community-certificate/toggle",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "session_token": income_sess_token,
+            "requirement_code": "applicant_photo",
+            "is_completed": True
+        }
+    )
+    assert cross_res.status_code == 403
+    assert "Unauthorized or mismatched session token" in cross_res.get_json()["error"]

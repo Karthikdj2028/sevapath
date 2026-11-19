@@ -16,6 +16,16 @@ def create_app(config_name: str = "default") -> Flask:
     config_cls = config_by_name.get(config_name, config_by_name["default"])
     app.config.from_object(config_cls)
 
+    # Production security validation: require explicit non-default SECRET_KEY from environment
+    if config_name == "production":
+        secret = os.environ.get("SECRET_KEY")
+        if not secret or secret == "sevapath-dev-insecure-secret-key-2026":
+            raise RuntimeError(
+                "CRITICAL CONFIGURATION ERROR: Production requires a secure SECRET_KEY set in the environment. "
+                "Application refused to start with missing or default development key."
+            )
+        app.config["SECRET_KEY"] = secret
+
     # Ensure instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)
 

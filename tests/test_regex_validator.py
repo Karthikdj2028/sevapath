@@ -3,7 +3,9 @@ Pytest unit tests for SevaPath Regex Validation Engine.
 
 Tests:
 - Indian mobile phone syntax, prefixes, separators, ASCII digits, normalization
-- Pragmatic email syntax, consecutive dots, domain labels, normalization
+- Pragmatic email syntax, local-part length (64), domain-label length (63), total length (254)
+- Email local-part case preservation and domain lowercasing
+- Email whitespace policy (leading/trailing stripped, internal rejected)
 - Deferred government identifiers
 - Boundary cases: empty, whitespace-only, non-string, oversized inputs
 - Unicode digits and invalid character rejection
@@ -100,17 +102,75 @@ def test_phone_oversized_payload_rejected():
 
 @pytest.mark.parametrize("valid_email,expected_normalized", [
     ("citizen@example.com", "citizen@example.com"),
-    ("Citizen.Name@TamilNadu.gov.in", "citizen.name@tamilnadu.gov.in"),
-    ("user+tag@domain.co.in", "user+tag@domain.co.in"),
+    # Local part case must be preserved; domain must be lowercased
+    ("Citizen.Name@TamilNadu.gov.in", "Citizen.Name@tamilnadu.gov.in"),
+    ("User+Tag@Domain.CO.IN", "User+Tag@domain.co.in"),
     ("first_last@dept.sub.gov.in", "first_last@dept.sub.gov.in"),
     ("  citizen@tnesevai.tn.gov.in  ", "citizen@tnesevai.tn.gov.in"),
 ])
 def test_valid_emails(valid_email, expected_normalized):
-    """Verifies valid email syntax and normalization."""
+    """Verifies valid email syntax and case preservation."""
     res = RegexValidator.validate_email(valid_email)
     assert res.is_valid is True
     assert res.cleaned_value == expected_normalized
     assert res.error_message_en is None
+
+
+def test_email_case_preservation_and_domain_lowercased():
+    """
+    CRITICAL REQUIREMENT 3:
+    Preserve local part case, lowercase only the domain.
+    """
+    res = RegexValidator.validate_email("MyCustomUserName@SubDomain.Example.COM")
+    assert res.is_valid is True
+    assert res.cleaned_value == "MyCustomUserName@subdomain.example.com"
+
+
+def test_email_local_part_length_boundaries():
+    """
+    CRITICAL REQUIREMENT 3:
+    Local part length <= 64 (valid), > 64 (invalid).
+    """
+    # 64-char local part
+    valid_local = "a" * 64 + "@example.com"
+    res_valid = RegexValidator.validate_email(valid_local)
+    assert res_valid.is_valid is True
+
+    # 65-char local part
+    invalid_local = "a" * 65 + "@example.com"
+    res_invalid = RegexValidator.validate_email(invalid_local)
+    assert res_invalid.is_valid is False
+    assert "local part exceeds maximum length" in res_invalid.error_message_en
+
+
+def test_email_domain_label_length_boundaries():
+    """
+    CRITICAL REQUIREMENT 3:
+    Domain label length <= 63 (valid), > 63 (invalid).
+    """
+    # 63-char domain label
+    valid_label = "user@" + ("a" * 63) + ".com"
+    res_valid = RegexValidator.validate_email(valid_label)
+    assert res_valid.is_valid is True
+
+    # 64-char domain label
+    invalid_label = "user@" + ("a" * 64) + ".com"
+    res_invalid = RegexValidator.validate_email(invalid_label)
+    assert res_invalid.is_valid is False
+    assert "domain label exceeds maximum length" in res_invalid.error_message_en
+
+
+def test_email_total_length_boundary():
+    """
+    CRITICAL REQUIREMENT 3:
+    Total email length <= 254 (valid), > 254 (invalid).
+    Each sub-part is within limits (local <= 64, labels <= 63), but total length is 260 > 254.
+    """
+    oversized = ("a" * 64) + "@" + ("b" * 63) + "." + ("c" * 63) + "." + ("d" * 63) + ".com"
+    assert len(oversized) > 254
+    res = RegexValidator.validate_email(oversized)
+    assert res.is_valid is False
+    assert "exceeds maximum length" in res.error_message_en
 
 
 @pytest.mark.parametrize("invalid_email", [
@@ -135,20 +195,31 @@ def test_invalid_emails(invalid_email):
     assert "Invalid email address syntax" in res.error_message_en
 
 
+def test_email_whitespace_handling():
+    """
+    CRITICAL REQUIREMENT 3:
+    Consistent whitespace policy: leading/trailing whitespace stripped and valid;
+    internal whitespace rejected.
+    """
+    # Leading and trailing whitespace stripped cleanly
+    res_clean = RegexValidator.validate_email("   citizen@example.com   ")
+    assert res_clean.is_valid is True
+    assert res_clean.cleaned_value == "citizen@example.com"
+
+    # Internal whitespace rejected
+    res_internal = RegexValidator.validate_email("citizen @example.com")
+    assert res_internal.is_valid is False
+
+    res_internal2 = RegexValidator.validate_email("citizen@ example.com")
+    assert res_internal2.is_valid is False
+
+
 def test_email_empty_and_non_string_inputs():
     """Verifies safe handling of null, empty, and non-string email inputs."""
     assert RegexValidator.validate_email(None).is_valid is False
     assert RegexValidator.validate_email("").is_valid is False
     assert RegexValidator.validate_email("   ").is_valid is False
     assert RegexValidator.validate_email(12345).is_valid is False
-
-
-def test_email_oversized_payload_rejected():
-    """Verifies that emails > 254 characters are rejected immediately."""
-    oversized = ("a" * 245) + "@example.com"
-    res = RegexValidator.validate_email(oversized)
-    assert res.is_valid is False
-    assert "exceeds maximum length" in res.error_message_en
 
 
 # --- Deferred Government Identifiers & Bilingual Output Tests ---

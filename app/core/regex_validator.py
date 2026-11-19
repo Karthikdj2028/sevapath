@@ -69,6 +69,8 @@ class RegexValidator:
     # Maximum length limits to prevent ReDoS on oversized payloads
     MAX_PHONE_INPUT_LENGTH = 25
     MAX_EMAIL_INPUT_LENGTH = 254
+    MAX_EMAIL_LOCAL_PART_LENGTH = 64
+    MAX_EMAIL_DOMAIN_LABEL_LENGTH = 63
 
     # Precompiled Regular Expressions using ASCII [0-9]
     # Phone: Optional prefix (+91, 91, or 0) followed by optional single space/hyphen,
@@ -225,7 +227,31 @@ class RegexValidator:
                 rule_description=rule_desc
             )
 
-        normalized = trimmed.lower()
+        local_part, domain_part = trimmed.split("@", 1)
+
+        # RFC 5321 length limits on local part and domain labels
+        if len(local_part) > cls.MAX_EMAIL_LOCAL_PART_LENGTH:
+            return ValidationResult(
+                is_valid=False,
+                field_type="email",
+                error_message_en=f"Email local part exceeds maximum length of {cls.MAX_EMAIL_LOCAL_PART_LENGTH} characters.",
+                error_message_ta=f"மின்னஞ்சல் பயனர் பெயர் பகுதி {cls.MAX_EMAIL_LOCAL_PART_LENGTH} எழுத்துக்களை விட அதிகமாக உள்ளது.",
+                rule_description=rule_desc
+            )
+
+        domain_labels = domain_part.split(".")
+        for label in domain_labels:
+            if len(label) > cls.MAX_EMAIL_DOMAIN_LABEL_LENGTH:
+                return ValidationResult(
+                    is_valid=False,
+                    field_type="email",
+                    error_message_en=f"Email domain label exceeds maximum length of {cls.MAX_EMAIL_DOMAIN_LABEL_LENGTH} characters.",
+                    error_message_ta=f"மின்னஞ்சல் டொமைன் லேபிள் {cls.MAX_EMAIL_DOMAIN_LABEL_LENGTH} எழுத்துக்களை விட அதிகமாக உள்ளது.",
+                    rule_description=rule_desc
+                )
+
+        # Normalization: PRESERVE local part's case, LOWERCASE only domain part
+        normalized = f"{local_part}@{domain_part.lower()}"
 
         return ValidationResult(
             is_valid=True,

@@ -2,13 +2,15 @@
 SevaPath API Blueprint for DFA Preparation Engine & Regex Validation.
 
 Provides JSON endpoints for:
-- Retrieving cryptographically random session CSRF tokens.
+- Retrieving cryptographically random session CSRF tokens (with Cache-Control: no-store).
 - Initializing or retrieving preparation session states.
-- Marking requirements completed/incomplete with DFA transitions (CSRF protected).
-- Resetting preparation progress (CSRF protected).
+- Marking requirements completed/incomplete with DFA transitions (Strict X-CSRF-Token protected).
+- Resetting preparation progress (Strict X-CSRF-Token protected).
+- Defensive JSON parsing and strict language validation (en, ta).
 - Syntax and format validation for mobile numbers and email (no persistence, zero logging).
 """
 
+from typing import Tuple, Optional, Dict, Any
 from flask import Blueprint, request, jsonify, current_app
 from app.models.database import (
     get_service_by_slug,
@@ -24,14 +26,58 @@ from app.core.regex_validator import RegexValidator
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 
+def parse_json_object(req) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Any, int]]]:
+    """
+    Defensively parses request body ensuring it is strictly a JSON object (dictionary).
+    
+    Rejects:
+    - Arrays (lists), strings, numbers, booleans, null (None), and malformed JSON.
+    
+    Returns:
+        Tuple[Optional[Dict[str, Any]], Optional[Tuple[Response, int]]]:
+        (data_dict, None) on success, or (None, (error_response, 400)) on failure.
+    """
+    if not req.is_json:
+        return None, (jsonify({"error": "Request body must be a valid JSON object."}), 400)
+
+    try:
+        data = req.get_json(silent=True)
+    except Exception:
+        return None, (jsonify({"error": "Malformed JSON payload."}), 400)
+
+    if not isinstance(data, dict):
+        return None, (jsonify({"error": "Request body must be a JSON object (key-value dictionary), not an array or primitive."}), 400)
+
+    return data, None
+
+
+def parse_language(data: Dict[str, Any]) -> Tuple[Optional[str], Optional[Tuple[Any, int]]]:
+    """
+    Validates the optional 'lang' parameter.
+    
+    Only 'en' and 'ta' are accepted. Defaults safely to DEFAULT_LANGUAGE if omitted.
+    Returns 400 if an invalid language code is explicitly provided.
+    """
+    if "lang" in data and data["lang"] is not None:
+        lang = data["lang"]
+        if lang not in current_app.config["SUPPORTED_LANGUAGES"]:
+            supported = ", ".join(f"'{l}'" for l in current_app.config["SUPPORTED_LANGUAGES"])
+            return None, (jsonify({"error": f"Invalid language code '{lang}'. Supported languages: {supported}."}), 400)
+        return lang, None
+    return current_app.config["DEFAULT_LANGUAGE"], None
+
+
 @api_bp.route("/csrf-token", methods=["GET"])
 def get_csrf():
     """
     Returns the active session CSRF token.
-    Used by browser scripts and automated test clients to obtain legitimate tokens.
+    Enforces Cache-Control: no-store to prevent token caching by proxies/browsers.
     """
     token = get_csrf_token()
-    return jsonify({"csrf_token": token}), 200
+    response = jsonify({"csrf_token": token})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response, 200
 
 
 @api_bp.route("/validate-format", methods=["POST"])
@@ -40,21 +86,31 @@ def validate_format_endpoint():
     Validates input format for supported fields (phone, email).
     
     Privacy & Security Guarantees:
+    - Defensive JSON parsing: rejects arrays, strings, numbers, null with 400.
+    - Validates language parameter ('en', 'ta').
     - Never stores, caches, or logs submitted values.
     - Never logs request body containing personal data.
-    - Does not echo sensitive inputs in error responses unnecessarily.
+    - Does not echo sensitive inputs in error responses.
     - Does not collect or validate Aadhaar numbers.
     """
-    data = request.get_json(silent=True) or {}
+    data, err = parse_json_object(request)
+    if err:
+        return err
+
+    lang, lang_err = parse_language(data)
+    if lang_err:
+        return lang_err
+
     field_type = data.get("field_type")
     value = data.get("value")
-    lang = data.get("lang", current_app.config["DEFAULT_LANGUAGE"])
 
     if not field_type:
         return jsonify({"error": "'field_type' parameter is required."}), 400
 
     result = RegexValidator.validate_format(str(field_type), value)
-    return jsonify(result.to_dict(lang=lang)), 200
+    response = jsonify(result.to_dict(lang=lang))
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
 
 
 @api_bp.route("/service/<slug>/state", methods=["GET"])
@@ -63,6 +119,9 @@ def get_service_state(slug):
     Retrieves the current DFA state and progress for a service and session.
     """
     lang = request.args.get("lang", current_app.config["DEFAULT_LANGUAGE"])
+    if lang not in current_app.config["SUPPORTED_LANGUAGES"]:
+        lang = current_app.config["DEFAULT_LANGUAGE"]
+
     session_token = request.args.get("session_token")
     
     # Conditional flags
@@ -113,22 +172,30 @@ def toggle_requirement(slug):
     Applies a completion or revocation event to the DFA and persists the transition.
     
     Security & Safety:
-    - Enforces cryptographic CSRF token validation (X-CSRF-Token header or body).
-    - Missing or invalid CSRF tokens receive HTTP 403 Forbidden.
+    - Defensive JSON parsing: rejects arrays, strings, numbers, null with HTTP 400.
+    - Enforces STRICT X-CSRF-Token header validation exclusively (no JSON body fallback).
+    - Missing, empty, malformed, or forged tokens receive HTTP 403 Forbidden.
     - Validates anonymous session ownership against service_id.
     - Rejects invalid requirement IDs with 400 Bad Request without corrupting state.
     """
-    data = request.get_json(silent=True) or {}
-    
-    # 1. CSRF Verification
-    submitted_csrf = request.headers.get("X-CSRF-Token") or data.get("csrf_token")
+    # 1. Strict CSRF Header Verification (Header required exclusively)
+    submitted_csrf = request.headers.get("X-CSRF-Token")
     if not verify_csrf_token(submitted_csrf):
-        return jsonify({"error": "CSRF token missing or invalid."}), 403
+        return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
+
+    # 2. Defensive JSON Object Parsing
+    data, err = parse_json_object(request)
+    if err:
+        return err
+
+    # 3. Language Validation
+    lang, lang_err = parse_language(data)
+    if lang_err:
+        return lang_err
 
     session_token = data.get("session_token")
     req_code = data.get("requirement_code")
     is_completed = bool(data.get("is_completed", True))
-    lang = data.get("lang", current_app.config["DEFAULT_LANGUAGE"])
 
     if not session_token or not req_code:
         return jsonify({"error": "Both 'session_token' and 'requirement_code' are required."}), 400
@@ -137,14 +204,14 @@ def toggle_requirement(slug):
     if not dfa or not service:
         return jsonify({"error": f"Service '{slug}' not found."}), 404
 
-    # 2. Validate session ownership
+    # 4. Validate session ownership
     sess = get_or_create_session(service["id"], session_token)
     if sess["session_token"] != session_token:
         return jsonify({"error": "Unauthorized or mismatched session token."}), 403
 
     session_id = sess["session_id"]
 
-    # 3. Update database session (rejects invalid requirement_code without corrupting state)
+    # 5. Update database session (rejects invalid requirement_code without corrupting state)
     success, err_msg = update_session_requirement(session_id, service["id"], req_code, is_completed)
     if not success:
         return jsonify({"error": err_msg}), 400
@@ -171,20 +238,27 @@ def reset_progress(slug):
     Resets the session state back to q_0 (all documents uncompleted).
     
     Security & Safety:
-    - Enforces cryptographic CSRF token validation (X-CSRF-Token header or body).
-    - Missing or invalid CSRF tokens receive HTTP 403 Forbidden.
+    - Defensive JSON parsing: rejects arrays, strings, numbers, null with HTTP 400.
+    - Enforces STRICT X-CSRF-Token header validation exclusively (no JSON body fallback).
+    - Missing, empty, malformed, or forged tokens receive HTTP 403 Forbidden.
     - Validates anonymous session ownership against service_id.
     """
-    data = request.get_json(silent=True) or {}
-
-    # 1. CSRF Verification
-    submitted_csrf = request.headers.get("X-CSRF-Token") or data.get("csrf_token")
+    # 1. Strict CSRF Header Verification
+    submitted_csrf = request.headers.get("X-CSRF-Token")
     if not verify_csrf_token(submitted_csrf):
-        return jsonify({"error": "CSRF token missing or invalid."}), 403
+        return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
+
+    # 2. Defensive JSON Object Parsing
+    data, err = parse_json_object(request)
+    if err:
+        return err
+
+    # 3. Language Validation
+    lang, lang_err = parse_language(data)
+    if lang_err:
+        return lang_err
 
     session_token = data.get("session_token")
-    lang = data.get("lang", current_app.config["DEFAULT_LANGUAGE"])
-
     if not session_token:
         return jsonify({"error": "'session_token' is required."}), 400
 
@@ -192,7 +266,7 @@ def reset_progress(slug):
     if not dfa or not service:
         return jsonify({"error": f"Service '{slug}' not found."}), 404
 
-    # 2. Validate session ownership
+    # 4. Validate session ownership
     sess = get_or_create_session(service["id"], session_token)
     if sess["session_token"] != session_token:
         return jsonify({"error": "Unauthorized session token."}), 403
