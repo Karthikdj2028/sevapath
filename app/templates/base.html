@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="{{ t('app_tagline') }}">
+  <title>{% block title %}{{ t('app_name') }} – {{ t('app_tagline') }}{% endblock %}</title>
+
+  <!-- Local Bootstrap 5.3 CSS for reliable offline operation -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+  
+  <!-- Custom Civic Tech Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="d-flex flex-column min-vh-100">
+
+  <!-- Main Navigation -->
+  <header>
+    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top py-2">
+      <div class="container">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('main.index') }}">
+          <span class="fs-4 fw-bold text-primary">🏛️ {{ t('app_name') }}</span>
+          <span class="brand-badge d-none d-sm-inline-block">Tamil Nadu</span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarContent">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-lg-3">
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('main.index') }}">{{ t('nav_home') }}</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('main.index') }}#services-section">{{ t('nav_services') }}</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('main.index') }}#how-it-works">{{ t('btn_how_it_works') }}</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('main.index') }}#privacy-section">{{ t('nav_privacy') }}</a>
+            </li>
+          </ul>
+
+          <!-- Language Selector -->
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small d-none d-md-inline">🌐 {{ t('language') }}:</span>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Language selection">
+              <a href="{{ url_for('main.set_language', lang_code='en') }}" 
+                 class="btn {% if current_lang == 'en' %}btn-primary fw-bold{% else %}btn-outline-secondary{% endif %}">
+                English
+              </a>
+              <a href="{{ url_for('main.set_language', lang_code='ta') }}" 
+                 class="btn {% if current_lang == 'ta' %}btn-primary fw-bold{% else %}btn-outline-secondary{% endif %}">
+                தமிழ்
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Flash Messages Container -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="container mt-3">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Main Content -->
+  <main class="flex-grow-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <h6>🏛️ {{ t('app_name') }}</h6>
+          <p class="small text-secondary mb-2">
+            {{ t('app_tagline') }}
+          </p>
+          <p class="small text-secondary">
+            {{ t('footer_disclaimer') }}
+          </p>
+        </div>
+        <div class="col-6 col-lg-3">
+          <h6>{{ t('nav_services') }}</h6>
+          <ul class="list-unstyled small">
+            <li><a href="{{ url_for('main.service_detail', slug='income-certificate') }}">வருமானச் சான்றிதழ் / Income</a></li>
+            <li><a href="{{ url_for('main.service_detail', slug='community-certificate') }}">சாதிச் சான்றிதழ் / Community</a></li>
+            <li><a href="{{ url_for('main.service_detail', slug='nativity-certificate') }}">இருப்பிடச் சான்றிதழ் / Nativity</a></li>
+          </ul>
+        </div>
+        <div class="col-6 col-lg-3">
+          <h6>{{ t('nav_privacy') }}</h6>
+          <ul class="list-unstyled small">
+            <li><span class="text-secondary">🔒 No Aadhaar collected</span></li>
+            <li><span class="text-secondary">🛡️ No file uploads stored</span></li>
+            <li><a href="{{ url_for('main.health_check') }}">System Health Status</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-top border-secondary pt-3 text-center small text-secondary">
+        &copy; 2026 {{ t('footer_rights') }}
+      </div>
+    </div>
+  </footer>
+
+  <!-- Local Bootstrap 5.3 Bundle for offline operation -->
+  <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+  <!-- Client Utilities -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

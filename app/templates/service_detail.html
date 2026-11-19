@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ service.name }} – {{ t('app_name') }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">{{ t('nav_home') }}</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}#services-section">{{ t('nav_services') }}</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ service.name }}</li>
+    </ol>
+  </nav>
+
+  <!-- Service Header Card -->
+  <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+      <div>
+        <span class="badge bg-light text-primary border mb-2">{{ service.department }}</span>
+        <h1 class="fw-bold text-dark mb-2">{{ service.name }}</h1>
+        <p class="lead text-secondary mb-0">{{ service.description }}</p>
+      </div>
+      <div>
+        {% if service.is_verified %}
+          <span class="badge-source fs-6 py-2 px-3">
+            ✓ {{ t('badge_verified') }}
+          </span>
+        {% else %}
+          <span class="badge bg-secondary fs-6 py-2 px-3">
+            {{ t('badge_demo') }}
+          </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-3 pt-3 border-top mt-2">
+      <div class="col-sm-4">
+        <div class="stat-pill text-center">
+          <span class="stat-label">{{ t('service_fee_label') }}</span>
+          <span class="stat-val text-success fs-5">{{ service.official_fee }}</span>
+        </div>
+      </div>
+      <div class="col-sm-4">
+        <div class="stat-pill text-center">
+          <span class="stat-label">{{ t('service_time_label') }}</span>
+          <span class="stat-val text-primary fs-5">{{ service.processing_time }}</span>
+        </div>
+      </div>
+      <div class="col-sm-4">
+        <div class="stat-pill text-center">
+          <span class="stat-label">Official Source</span>
+          <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer" class="stat-val text-decoration-none">
+            {{ service.portal_name }} ↗
+          </a>
+        </div>
+      </div>
+    </div>
+
+    {% if service.benefits %}
+      <div class="alert alert-light border mt-3 mb-0">
+        <strong>💡 Key Benefits & Usage:</strong> {{ service.benefits }}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Requirements Checklist Overview -->
+  <div class="card border-0 shadow-sm p-4 bg-white rounded-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h3 class="fw-bold mb-1">Required Documents Checklist</h3>
+        <p class="text-muted small mb-0">Review the mandatory and supporting proofs required for application submission.</p>
+      </div>
+      <span class="badge bg-primary fs-6">{{ service.requirements|length }} Total Items</span>
+    </div>
+
+    <div class="list-group list-group-flush">
+      {% for req in service.requirements %}
+        <div class="list-group-item px-0 py-3 d-flex gap-3 align-items-start">
+          <div class="fs-4 mt-1">
+            {% if req.is_mandatory %}
+              <span class="text-danger" title="Mandatory Requirement">●</span>
+            {% else %}
+              <span class="text-secondary" title="Optional / Supporting Requirement">○</span>
+            {% endif %}
+          </div>
+          <div class="flex-grow-1">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <h5 class="fw-semibold mb-0">{{ req.title }}</h5>
+              {% if req.is_mandatory %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Mandatory</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Supporting / Optional</span>
+              {% endif %}
+            </div>
+            <p class="text-secondary small mb-1">{{ req.description }}</p>
+            {% if req.help_text %}
+              <div class="small text-muted bg-light p-2 rounded border">
+                ℹ️ <em>{{ req.help_text }}</em>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Verification Source & Civic Disclaimer Note -->
+  <div class="card border-warning bg-light p-3 rounded-3">
+    <div class="d-flex gap-2">
+      <span class="fs-4 text-warning">⚠️</span>
+      <div class="small text-secondary">
+        <strong>Official Data Verification:</strong> This service was last verified from 
+        <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer">{{ service.portal_name }}</a> 
+        on <code>{{ service.verification_date }}</code>. SevaPath is an academic civic readiness assistant and does not guarantee certificate approval. Always adhere to official revenue guidelines.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

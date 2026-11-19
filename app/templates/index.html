@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+  <div class="container text-center">
+    <div class="hero-tag">
+      <span>🏛️ {{ t('hero_badge') }}</span>
+    </div>
+    <h1 class="hero-title">{{ t('hero_title') }}</h1>
+    <p class="hero-subtitle mx-auto">{{ t('hero_subtitle') }}</p>
+
+    <!-- Public Service Search Box -->
+    <div class="search-container mx-auto d-flex align-items-center mb-4">
+      <span class="fs-5 text-muted px-2">🔍</span>
+      <input type="text" 
+             id="serviceSearchInput" 
+             class="form-control search-input" 
+             placeholder="{{ t('search_placeholder') }}" 
+             aria-label="{{ t('search_placeholder') }}">
+    </div>
+
+    <div class="d-flex justify-content-center gap-3">
+      <a href="#services-section" class="btn btn-warning px-4 py-2 fw-bold text-dark shadow-sm">
+        {{ t('btn_explore') }} ↓
+      </a>
+      <a href="#how-it-works" class="btn btn-outline-light px-4 py-2">
+        {{ t('btn_how_it_works') }}
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Public Services Directory Section -->
+<section id="services-section" class="py-5">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold text-dark">{{ t('services_section_title') }}</h2>
+      <p class="text-muted">{{ t('services_section_subtitle') }}</p>
+    </div>
+
+    <!-- Alert for empty search results -->
+    <div id="noServicesAlert" class="alert alert-info text-center" style="display: none;">
+      {{ t('no_services_found') }}
+    </div>
+
+    <!-- Service Cards Grid -->
+    <div class="row g-4" id="servicesGrid">
+      {% for service in services %}
+        <div class="col-md-6 col-lg-4 service-card-col" 
+             data-title="{{ service.name }}" 
+             data-desc="{{ service.description }}" 
+             data-dept="{{ service.department }}">
+          <div class="card service-card h-100 shadow-sm p-4 d-flex flex-column justify-content-between">
+            <div>
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <span class="service-dept">{{ service.department }}</span>
+                {% if service.is_verified %}
+                  <span class="badge-source" title="Source: {{ service.portal_name }} ({{ service.verification_date }})">
+                    ✓ {{ t('badge_verified') }}
+                  </span>
+                {% else %}
+                  <span class="badge bg-secondary">
+                    {{ t('badge_demo') }}
+                  </span>
+                {% endif %}
+              </div>
+
+              <h3 class="service-title mb-2">{{ service.name }}</h3>
+              <p class="text-muted small mb-3">
+                {{ service.description }}
+              </p>
+            </div>
+
+            <div>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <div class="stat-pill text-center">
+                    <span class="stat-label">{{ t('service_fee_label') }}</span>
+                    <span class="stat-val text-success">{{ service.official_fee }}</span>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="stat-pill text-center">
+                    <span class="stat-label">{{ t('service_time_label') }}</span>
+                    <span class="stat-val text-primary">{{ service.processing_time }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex justify-content-between align-items-center mb-3 text-secondary small">
+                <span>📋 {{ service.total_requirements }} Requirements</span>
+                <span class="text-danger">● {{ service.mandatory_requirements }} Mandatory</span>
+              </div>
+
+              <a href="{{ url_for('main.service_detail', slug=service.slug) }}" class="btn btn-primary w-100 fw-semibold">
+                {{ t('btn_view_service') }} →
+              </a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- How SevaPath Works Section -->
+<section id="how-it-works" class="py-5 bg-white border-top border-bottom">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold text-dark">{{ t('how_title') }}</h2>
+      <p class="text-muted">{{ t('how_subtitle') }}</p>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="step-card">
+          <div class="step-num">1</div>
+          <h4 class="fw-bold mb-2">{{ t('step_1_title') }}</h4>
+          <p class="text-muted small mb-0">{{ t('step_1_desc') }}</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="step-card">
+          <div class="step-num">2</div>
+          <h4 class="fw-bold mb-2">{{ t('step_2_title') }}</h4>
+          <p class="text-muted small mb-0">{{ t('step_2_desc') }}</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="step-card">
+          <div class="step-num">3</div>
+          <h4 class="fw-bold mb-2">{{ t('step_3_title') }}</h4>
+          <p class="text-muted small mb-0">{{ t('step_3_desc') }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy & Civic Responsibility Section -->
+<section id="privacy-section" class="py-5">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold text-dark">{{ t('privacy_title') }}</h2>
+      <p class="text-muted">{{ t('privacy_subtitle') }}</p>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="privacy-card p-4 h-100">
+          <div class="fs-3 text-warning mb-2">🔒</div>
+          <h5 class="fw-bold">{{ t('privacy_point_1_title') }}</h5>
+          <p class="text-muted small mb-0">{{ t('privacy_point_1_desc') }}</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="privacy-card p-4 h-100">
+          <div class="fs-3 text-primary mb-2">🏛️</div>
+          <h5 class="fw-bold">{{ t('privacy_point_2_title') }}</h5>
+          <p class="text-muted small mb-0">{{ t('privacy_point_2_desc') }}</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="privacy-card p-4 h-100">
+          <div class="fs-3 text-danger mb-2">⚖️</div>
+          <h5 class="fw-bold">{{ t('privacy_point_3_title') }}</h5>
+          <p class="text-muted small mb-0">{{ t('privacy_point_3_desc') }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
