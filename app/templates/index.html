@@ -13,10 +13,10 @@
     <!-- Public Service Search Box -->
     <div class="search-container mx-auto d-flex align-items-center mb-4">
       <span class="fs-5 text-muted px-2">🔍</span>
-      <input type="text" 
-             id="serviceSearchInput" 
-             class="form-control search-input" 
-             placeholder="{{ t('search_placeholder') }}" 
+      <input type="text"
+             id="serviceSearchInput"
+             class="form-control search-input"
+             placeholder="{{ t('search_placeholder') }}"
              aria-label="{{ t('search_placeholder') }}">
     </div>
 
@@ -39,6 +39,15 @@
       <p class="text-muted">{{ t('services_section_subtitle') }}</p>
     </div>
 
+    <!-- Anonymous Session Advisory Alert -->
+    <div class="alert alert-light border border-info-subtle shadow-sm mb-4 d-flex align-items-center gap-3 py-3 px-4 rounded-3" role="alert">
+      <div class="fs-3 text-info">ℹ️</div>
+      <div class="small text-muted">
+        <strong class="text-dark d-block mb-1">{{ t('session_advisory_title') }}</strong>
+        {{ t('session_advisory_body') }}
+      </div>
+    </div>
+
     <!-- Alert for empty search results -->
     <div id="noServicesAlert" class="alert alert-info text-center" style="display: none;">
       {{ t('no_services_found') }}
@@ -47,9 +56,9 @@
     <!-- Service Cards Grid -->
     <div class="row g-4" id="servicesGrid">
       {% for service in services %}
-        <div class="col-md-6 col-lg-4 service-card-col" 
-             data-title="{{ service.name }}" 
-             data-desc="{{ service.description }}" 
+        <div class="col-md-6 col-lg-4 service-card-col"
+             data-title="{{ service.name }}"
+             data-desc="{{ service.description }}"
              data-dept="{{ service.department }}">
           <div class="card service-card h-100 shadow-sm p-4 d-flex flex-column justify-content-between">
             <div>
@@ -88,14 +97,46 @@
                 </div>
               </div>
 
-              <div class="d-flex justify-content-between align-items-center mb-3 text-secondary small">
-                <span>📋 {{ service.total_requirements }} Requirements</span>
-                <span class="text-danger">● {{ service.mandatory_requirements }} Mandatory</span>
+              <!-- Citizen Preparation Progress -->
+              {% if service.readiness_percentage is defined %}
+              <div class="mb-3 p-2 bg-light rounded border">
+                <div class="d-flex justify-content-between align-items-center mb-1 small">
+                  <span class="fw-semibold">
+                    {% if service.readiness_stage == 'complete' %}
+                      <span class="text-success fw-bold">&#10004; {{ t('status_complete', 'Checklist Complete') }}</span>
+                    {% elif service.readiness_stage == 'in_progress' %}
+                      <span class="text-primary fw-semibold">{{ t('status_in_progress', 'In Progress') }}</span>
+                    {% elif service.readiness_stage == 'undetermined' %}
+                      <span class="text-warning-emphasis fw-semibold">{{ t('status_undetermined', 'Decisions Pending') }}</span>
+                    {% else %}
+                      <span class="text-muted">{{ t('status_not_started', 'Not Started') }}</span>
+                    {% endif %}
+                  </span>
+                  <span class="fw-bold">{{ service.readiness_percentage }}%</span>
+                </div>
+                <div class="progress" style="height: 6px;" role="progressbar" aria-valuenow="{{ service.readiness_percentage }}" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-bar {% if service.is_accepting %}bg-success{% else %}bg-primary{% endif %}" style="width: {{ service.readiness_percentage }}%;"></div>
+                </div>
+                <div class="d-flex justify-content-between mt-1 text-muted" style="font-size: 0.75rem;">
+                  <span>{{ service.completed_count }} / {{ service.total_applicable }} {{ t('applicable', 'applicable prepared') }}</span>
+                  {% if service.undetermined_count > 0 %}
+                    <span class="text-warning-emphasis">{{ service.undetermined_count }} {{ t('undetermined', 'undecided') }}</span>
+                  {% endif %}
+                </div>
               </div>
+              {% endif %}
 
-              <a href="{{ url_for('main.service_detail', slug=service.slug) }}" class="btn btn-primary w-100 fw-semibold">
-                {{ t('btn_view_service') }} →
-              </a>
+              <div class="d-flex gap-2">
+                <a href="{{ url_for('main.service_detail', slug=service.slug) }}" class="btn btn-primary flex-grow-1 fw-semibold btn-sm">
+                  {{ t('btn_prepare_service', 'Prepare Checklist') }} →
+                </a>
+                <a href="{{ url_for('reports.download_pdf', slug=service.slug) }}" class="btn btn-outline-secondary btn-sm" title="{{ t('btn_download_pdf') }}">
+                  PDF
+                </a>
+                <a href="{{ url_for('reports.print_checklist', slug=service.slug, lang=current_lang) }}" class="btn btn-outline-secondary btn-sm" title="{{ t('btn_print_view') }}">
+                  Print
+                </a>
+              </div>
             </div>
           </div>
         </div>

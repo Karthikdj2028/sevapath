@@ -69,14 +69,12 @@ def test_csrf_body_token_without_header_rejected(client):
     Prove that a valid token in the JSON body without the X-CSRF-Token header is rejected with 403.
     """
     init_res = client.get("/api/service/income-certificate/state")
-    session_token = init_res.get_json()["session_token"]
     valid_csrf_token = init_res.get_json()["csrf_token"]
 
     # Send valid CSRF token in the JSON body, but OMIT the X-CSRF-Token header
     res = client.post(
         "/api/service/income-certificate/toggle",
         json={
-            "session_token": session_token,
             "requirement_code": "applicant_photo",
             "is_completed": True,
             "csrf_token": valid_csrf_token  # In body only
@@ -88,13 +86,12 @@ def test_csrf_body_token_without_header_rejected(client):
 
 def test_csrf_missing_and_forged_header_rejected(client):
     """Verifies that missing, empty, or forged X-CSRF-Token headers receive HTTP 403."""
-    init_res = client.get("/api/service/income-certificate/state")
-    session_token = init_res.get_json()["session_token"]
+    client.get("/api/service/income-certificate/state")
 
     # 1. Missing header
     res_missing = client.post(
         "/api/service/income-certificate/toggle",
-        json={"session_token": session_token, "requirement_code": "applicant_photo", "is_completed": True}
+        json={"requirement_code": "applicant_photo", "is_completed": True}
     )
     assert res_missing.status_code == 403
 
@@ -102,7 +99,7 @@ def test_csrf_missing_and_forged_header_rejected(client):
     res_forged = client.post(
         "/api/service/income-certificate/toggle",
         headers={"X-CSRF-Token": "forged_invalid_hex_token_00000000000000000000000000000000000000"},
-        json={"session_token": session_token, "requirement_code": "applicant_photo", "is_completed": True}
+        json={"requirement_code": "applicant_photo", "is_completed": True}
     )
     assert res_forged.status_code == 403
 
@@ -223,20 +220,19 @@ def test_api_validate_format_privacy_zero_persistence(client, app):
 def test_session_ownership_preserved_with_valid_csrf(client):
     """
     CSRF does not replace session ownership checks. A valid CSRF token cannot be used
-    to mutate another service's session.
+    to mutate another service's requirements or invalid requirement codes.
     """
     income_res = client.get("/api/service/income-certificate/state")
-    income_sess_token = income_res.get_json()["session_token"]
     csrf_token = income_res.get_json()["csrf_token"]
 
+    # Attempt to toggle a requirement code on community certificate that belongs to income
     cross_res = client.post(
         "/api/service/community-certificate/toggle",
         headers={"X-CSRF-Token": csrf_token},
         json={
-            "session_token": income_sess_token,
-            "requirement_code": "applicant_photo",
+            "requirement_code": "family_smart_card",
             "is_completed": True
         }
     )
-    assert cross_res.status_code == 403
-    assert "Unauthorized or mismatched session token" in cross_res.get_json()["error"]
+    assert cross_res.status_code == 400
+    assert "not found for this service" in cross_res.get_json()["error"]

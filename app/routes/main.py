@@ -1,12 +1,21 @@
 """
 SevaPath Main Application Routes.
 
-Handles the homepage, language switcher, public services catalog,
-service details, and system health check.
+Handles the citizen dashboard, public services catalog,
+service preparation details, language switcher, and system health check.
 """
 
-from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify, current_app
-from app.models.database import get_services, get_service_by_slug
+from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify, current_app, make_response
+from app.models.database import (
+    get_services,
+    get_service_by_slug,
+    get_citizen_dashboard_summary,
+    get_or_create_preparation_session,
+    get_service_requirements_with_citizen_state,
+    build_service_dfa,
+    get_session_completed_keys
+)
+from app.core.security import resolve_citizen_session, set_citizen_cookie
 from app.translations import get_translation
 
 main_bp = Blueprint("main", __name__)
@@ -32,28 +41,73 @@ def get_current_language() -> str:
 
 @main_bp.route("/")
 def index():
-    """Homepage: Renders branding, hero, searchable service cards, how it works, and privacy."""
+    """
+    Homepage & Citizen Preparation Dashboard:
+    Displays citizen's preparation progress across Tamil Nadu public services.
+    """
     lang = get_current_language()
-    services = get_services(lang_code=lang)
-    return render_template("index.html", services=services, current_lang=lang)
+    citizen_sess, raw_token, is_new_or_rotated = resolve_citizen_session(request)
+    citizen_id = citizen_sess["id"]
+
+    dashboard_services = get_citizen_dashboard_summary(citizen_id, lang_code=lang)
+
+    html = render_template("index.html", services=dashboard_services, current_lang=lang)
+    response = make_response(html)
+    if is_new_or_rotated and raw_token:
+        set_citizen_cookie(response, raw_token)
+    return response
 
 
 @main_bp.route("/services")
 def services_directory():
     """Direct alias to public services list on homepage."""
     lang = get_current_language()
-    services = get_services(lang_code=lang)
-    return render_template("index.html", services=services, current_lang=lang, scroll_to="services")
+    citizen_sess, raw_token, is_new_or_rotated = resolve_citizen_session(request)
+    citizen_id = citizen_sess["id"]
+
+    dashboard_services = get_citizen_dashboard_summary(citizen_id, lang_code=lang)
+    html = render_template("index.html", services=dashboard_services, current_lang=lang, scroll_to="services")
+    response = make_response(html)
+    if is_new_or_rotated and raw_token:
+        set_citizen_cookie(response, raw_token)
+    return response
 
 
 @main_bp.route("/service/<slug>")
 def service_detail(slug):
-    """Displays detailed document requirements and official sources for a single service."""
+    """
+    Displays the citizen document preparation experience, interactive applicability decisions,
+    DFA state transitions, and report download options for a service.
+    """
     lang = get_current_language()
     service = get_service_by_slug(slug, lang_code=lang)
     if not service:
         return render_template("errors/404.html", message=f"Service '{slug}' not found."), 404
-    return render_template("service_detail.html", service=service, current_lang=lang)
+
+    citizen_sess, raw_token, is_new_or_rotated = resolve_citizen_session(request)
+    citizen_id = citizen_sess["id"]
+
+    prep_sess = get_or_create_preparation_session(citizen_id, service["id"])
+    session_id = prep_sess["id"]
+
+    requirements = get_service_requirements_with_citizen_state(service["id"], session_id, lang_code=lang)
+    dfa, _ = build_service_dfa(slug, citizen_session_id=citizen_id, lang_code=lang)
+
+    completed_keys = get_session_completed_keys(session_id)
+    curr_state = dfa.requirements_to_state(completed_keys) if dfa else 0
+    progress = dfa.get_progress_summary(curr_state) if dfa else {}
+
+    html = render_template(
+        "service_detail.html",
+        service=service,
+        requirements=requirements,
+        progress=progress,
+        current_lang=lang
+    )
+    response = make_response(html)
+    if is_new_or_rotated and raw_token:
+        set_citizen_cookie(response, raw_token)
+    return response
 
 
 @main_bp.route("/set-language/<lang_code>")
@@ -61,10 +115,8 @@ def set_language(lang_code):
     """Sets language preference in session & cookie and redirects to the previous page."""
     if lang_code in current_app.config["SUPPORTED_LANGUAGES"]:
         session["lang"] = lang_code
-    
-    # Redirect to referrer or homepage
+
     referrer = request.referrer or url_for("main.index")
-    # Clean out ?lang= from referrer if present to prevent overriding session
     response = redirect(referrer)
     response.set_cookie("sevapath_lang", lang_code, max_age=30 * 24 * 3600, samesite="Lax")
     return response

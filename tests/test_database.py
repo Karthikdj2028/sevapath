@@ -35,7 +35,8 @@ def test_service_retrieval_english(app):
         assert service["name"] == "Income Certificate"
         assert "Revenue Administration" in service["department"]
         assert len(service["requirements"]) >= 3
-        assert service["official_fee"] == "₹60 (e-Sevai Statutory Fee)"
+        assert "e-Sevai service charge: INR 60" in service["official_fee"]
+        assert "Department fee: INR 0" in service["official_fee"]
         assert service["is_verified"] == 1
 
 

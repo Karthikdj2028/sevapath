@@ -21,9 +21,15 @@
         <h1 class="fw-bold text-dark mb-2">{{ service.name }}</h1>
         <p class="lead text-secondary mb-0">{{ service.description }}</p>
       </div>
-      <div>
+      <div class="d-flex flex-column align-items-end gap-2">
+        <span class="badge bg-secondary mb-1">
+          {% if service.slug == 'community-certificate' %}REV-101
+          {% elif service.slug == 'nativity-certificate' %}REV-102
+          {% elif service.slug == 'income-certificate' %}REV-103
+          {% else %}REV-eSevai{% endif %}
+        </span>
         {% if service.is_verified %}
-          <span class="badge-source fs-6 py-2 px-3">
+          <span class="badge-source fs-6 py-2 px-3" title="Verified from official portal on {{ service.verification_date }}">
             ✓ {{ t('badge_verified') }}
           </span>
         {% else %}
@@ -34,27 +40,47 @@
       </div>
     </div>
 
+    <!-- Metadata Details -->
     <div class="row g-3 pt-3 border-top mt-2">
       <div class="col-sm-4">
         <div class="stat-pill text-center">
           <span class="stat-label">{{ t('service_fee_label') }}</span>
-          <span class="stat-val text-success fs-5">{{ service.official_fee }}</span>
+          <span class="stat-val text-success fs-6 fw-bold">{{ service.official_fee }}</span>
         </div>
       </div>
       <div class="col-sm-4">
         <div class="stat-pill text-center">
           <span class="stat-label">{{ t('service_time_label') }}</span>
-          <span class="stat-val text-primary fs-5">{{ service.processing_time }}</span>
+          <span class="stat-val text-primary fs-6 fw-bold">{{ service.processing_time }}</span>
         </div>
       </div>
       <div class="col-sm-4">
         <div class="stat-pill text-center">
-          <span class="stat-label">Official Portal</span>
-          <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer" class="stat-val text-decoration-none">
+          <span class="stat-label">{{ t('official_source', 'Official Portal') }}</span>
+          <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer" class="stat-val text-decoration-none fs-6">
             {{ service.portal_name }} ↗
           </a>
         </div>
       </div>
+    </div>
+
+    <!-- Actions: Download PDF and Print -->
+    <div class="d-flex flex-wrap gap-2 pt-3 border-top mt-3 justify-content-end">
+      <a href="{{ url_for('reports.download_pdf', slug=service.slug) }}" class="btn btn-outline-primary btn-sm fw-semibold">
+        📥 {{ t('btn_download_pdf', 'Download PDF Guide') }}
+      </a>
+      <a href="{{ url_for('reports.print_checklist', slug=service.slug, lang=current_lang) }}" class="btn btn-outline-secondary btn-sm fw-semibold" target="_blank">
+        🖨️ {{ t('btn_print_view', 'Printable Checklist') }}
+      </a>
+    </div>
+  </div>
+
+  <!-- Anonymous Session Advisory Alert -->
+  <div class="alert alert-light border border-info-subtle shadow-sm mb-4 d-flex align-items-center gap-3 py-3 px-4 rounded-3" role="alert">
+    <div class="fs-4 text-info">ℹ️</div>
+    <div class="small text-muted">
+      <strong class="text-dark d-block mb-1">{{ t('session_advisory_title') }}</strong>
+      {{ t('session_advisory_body') }}
     </div>
   </div>
 
@@ -72,7 +98,7 @@
           {{ t('current_state_label') }}: <strong class="text-primary" id="currentStateDisplay">q₀</strong>
         </span>
         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2" id="acceptanceBadge">
-          ⏳ {{ t('state_in_progress') }}
+          ⏳ {{ t('status_not_started') }}
         </span>
         <button class="btn btn-outline-danger btn-sm" id="btnResetProgress" title="{{ t('btn_reset_progress') }}">
           ↺ {{ t('btn_reset_progress') }}
@@ -83,16 +109,16 @@
     <!-- Progress Bar -->
     <div class="mb-3">
       <div class="d-flex justify-content-between align-items-center mb-1">
-        <span class="small text-muted fw-semibold">Mandatory Requirement Completion</span>
+        <span class="small text-muted fw-semibold" id="progressSubtitleDisplay">Applicable Requirement Preparation</span>
         <span class="fw-bold fs-5 text-primary" id="readinessPercentDisplay">0.0%</span>
       </div>
       <div class="progress" style="height: 14px;">
-        <div id="readinessProgressBar" 
-             class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
-             role="progressbar" 
-             style="width: 0%;" 
-             aria-valuenow="0" 
-             aria-valuemin="0" 
+        <div id="readinessProgressBar"
+             class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+             role="progressbar"
+             style="width: 0%;"
+             aria-valuenow="0"
+             aria-valuemin="0"
              aria-valuemax="100">
         </div>
       </div>
@@ -100,17 +126,21 @@
 
     <!-- Compact Progress Counters -->
     <div class="row g-2 text-center pt-2 border-top">
-      <div class="col-4">
-        <span class="text-muted small d-block">Completed</span>
+      <div class="col-3">
+        <span class="text-muted small d-block">Prepared</span>
         <span class="fw-bold fs-5 text-success" id="completedCountDisplay">0</span>
       </div>
-      <div class="col-4">
-        <span class="text-muted small d-block">Remaining</span>
-        <span class="fw-bold fs-5 text-danger" id="remainingCountDisplay">{{ service.requirements|length }}</span>
+      <div class="col-3">
+        <span class="text-muted small d-block">Pending</span>
+        <span class="fw-bold fs-5 text-danger" id="remainingCountDisplay">0</span>
       </div>
-      <div class="col-4">
-        <span class="text-muted small d-block">Applicable Total</span>
-        <span class="fw-bold fs-5 text-dark" id="totalCountDisplay">{{ service.requirements|length }}</span>
+      <div class="col-3">
+        <span class="text-muted small d-block">Undecided</span>
+        <span class="fw-bold fs-5 text-warning-emphasis" id="undeterminedCountDisplay">{{ requirements|length }}</span>
+      </div>
+      <div class="col-3">
+        <span class="text-muted small d-block">Not Applicable</span>
+        <span class="fw-bold fs-5 text-secondary" id="notApplicableCountDisplay">0</span>
       </div>
     </div>
   </div>
@@ -119,45 +149,120 @@
     <!-- Left Column: Interactive Document Checklist -->
     <div class="col-lg-7">
       <div class="card border-0 shadow-sm p-4 bg-white rounded-3 h-100">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h4 class="fw-bold mb-0">📋 Document Preparation Checklist</h4>
-          <span class="badge bg-secondary-subtle text-secondary small">Order Independent</span>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h4 class="fw-bold mb-0">📋 {{ t('checklist_print_title', 'Document Preparation Checklist') }}</h4>
+          <span class="badge bg-secondary-subtle text-secondary small">Citizen Controlled</span>
         </div>
         <p class="text-muted small mb-3">
-          Check off documents as you prepare them. The Python DFA automaton transitions states in real time.
+          {{ t('decision_alert', 'Please indicate whether each document applies to your application circumstances, then check off items as you prepare them.') }}
         </p>
 
+        <!-- Nativity Callout if applicable -->
+        {% if service.slug == 'nativity-certificate' %}
+        <div class="alert alert-info py-2 px-3 small mb-3">
+          <strong>{{ t('nativity_alt_rule_title', 'Nativity Alternative Proof Rule:') }}</strong>
+          {{ t('nativity_alt_rule_desc', 'Official TNeGA regulations specify 5-year residence evidence as a single composite requirement satisfied by any one of three alternatives. You only need to prepare one valid alternative.') }}
+        </div>
+        {% endif %}
+
         <div class="list-group list-group-flush" id="checklistGroup">
-          {% for req in service.requirements %}
-            <div class="list-group-item px-0 py-3 d-flex gap-3 align-items-start checklist-item" 
-                 id="item-row-{{ req.requirement_code }}">
-              <div class="form-check pt-1 fs-5">
-                <input class="form-check-input checklist-checkbox" 
-                       type="checkbox" 
-                       value="{{ req.requirement_code }}" 
-                       id="check-{{ req.requirement_code }}" 
-                       data-req-code="{{ req.requirement_code }}">
-              </div>
-              <div class="flex-grow-1">
-                <label class="form-check-label d-block cursor-pointer" for="check-{{ req.requirement_code }}">
-                  <div class="d-flex justify-content-between align-items-center mb-1">
-                    <h5 class="fw-semibold mb-0 req-title" id="title-{{ req.requirement_code }}">{{ req.title }}</h5>
-                    {% if req.requirement_code == 'pan_it_return' %}
-                      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning">{{ t('conditional_badge') }}</span>
-                    {% elif req.is_mandatory %}
-                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ t('mandatory_badge') }}</span>
-                    {% else %}
-                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ t('optional_badge') }}</span>
-                    {% endif %}
-                  </div>
+          {% for req in requirements %}
+            <div class="list-group-item px-0 py-3 border-bottom checklist-item"
+                 id="item-row-{{ req.requirement_code }}"
+                 data-req-code="{{ req.requirement_code }}">
+
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <h5 class="fw-semibold mb-1 req-title" id="title-{{ req.requirement_code }}">
+                    {{ req.title }}
+                  </h5>
                   <p class="text-secondary small mb-1">{{ req.description }}</p>
-                  {% if req.help_text %}
-                    <div class="small text-muted bg-light p-2 rounded border mt-1">
-                      ℹ️ <em>{{ req.help_text }}</em>
-                    </div>
+                </div>
+                <div>
+                  {% if req.presentation_category == 'alternative_option' %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ t('cat_alt', 'Official Alternative Option') }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ t('cat_unconfirmed', 'TNeGA Listed') }}</span>
                   {% endif %}
-                </label>
+                </div>
               </div>
+
+              {% if req.help_text %}
+                <div class="small text-muted bg-light p-2 rounded border mb-2">
+                  ℹ️ <em>{{ req.help_text }}</em>
+                </div>
+              {% endif %}
+
+              <!-- Citizen Applicability Decision Radio Group -->
+              <div class="mb-2 p-2 bg-light-subtle rounded border">
+                <span class="small fw-semibold text-dark d-block mb-1">{{ t('applicability_prompt', 'Does this apply to your circumstances?') }}</span>
+                <div class="btn-group btn-group-sm w-100" role="group" aria-label="Applicability for {{ req.title }}">
+                  <input type="radio" class="btn-check app-radio"
+                         name="app-{{ req.requirement_code }}"
+                         id="app-yes-{{ req.requirement_code }}"
+                         value="applicable"
+                         data-req-code="{{ req.requirement_code }}"
+                         {% if req.applicability == 'applicable' %}checked{% endif %}>
+                  <label class="btn btn-outline-success" for="app-yes-{{ req.requirement_code }}">
+                    ✓ {{ t('applicable', 'Applicable to Me') }}
+                  </label>
+
+                  <input type="radio" class="btn-check app-radio"
+                         name="app-{{ req.requirement_code }}"
+                         id="app-no-{{ req.requirement_code }}"
+                         value="not_applicable"
+                         data-req-code="{{ req.requirement_code }}"
+                         {% if req.applicability == 'not_applicable' %}checked{% endif %}>
+                  <label class="btn btn-outline-secondary" for="app-no-{{ req.requirement_code }}">
+                    ✕ {{ t('not_applicable', 'Not Applicable') }}
+                  </label>
+
+                  <input type="radio" class="btn-check app-radio"
+                         name="app-{{ req.requirement_code }}"
+                         id="app-und-{{ req.requirement_code }}"
+                         value="undetermined"
+                         data-req-code="{{ req.requirement_code }}"
+                         {% if req.applicability == 'undetermined' %}checked{% endif %}>
+                  <label class="btn btn-outline-warning" for="app-und-{{ req.requirement_code }}">
+                    ? {{ t('undetermined', 'Undecided') }}
+                  </label>
+                </div>
+              </div>
+
+              <!-- Alternative Option Selector (for Nativity 5-year proof) -->
+              {% if req.logical_group == 'nativity_residence_5yr' %}
+              <div class="mb-2 p-2 bg-light rounded border alt-selector-box" id="alt-box-{{ req.requirement_code }}" style="{% if req.applicability != 'applicable' %}display: none;{% endif %}">
+                <span class="small fw-semibold text-primary d-block mb-1">Select which alternative proof you are preparing:</span>
+                <div class="form-check small mb-1">
+                  <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-school" value="School Education Certificate" {% if req.selected_alternative == 'School Education Certificate' or not req.selected_alternative %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
+                  <label class="form-check-label" for="alt-school">1. School Education Certificate (Study in TN for 5+ years)</label>
+                </div>
+                <div class="form-check small mb-1">
+                  <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-emp" value="Employment Details" {% if req.selected_alternative == 'Employment Details' %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
+                  <label class="form-check-label" for="alt-emp">2. Employment Details in Tamil Nadu</label>
+                </div>
+                <div class="form-check small">
+                  <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-res" value="Continuous residence proof for last 5 years" {% if req.selected_alternative == 'Continuous residence proof for last 5 years' %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
+                  <label class="form-check-label" for="alt-res">3. Proof for continuous residence in Tamil Nadu for 5 years</label>
+                </div>
+              </div>
+              {% endif %}
+
+              <!-- Preparation Checkbox (Visible when Applicable) -->
+              <div class="prep-check-container" id="prep-box-{{ req.requirement_code }}" style="{% if req.applicability != 'applicable' %}display: none;{% endif %}">
+                <div class="form-check pt-1">
+                  <input class="form-check-input checklist-checkbox fs-5"
+                         type="checkbox"
+                         value="{{ req.requirement_code }}"
+                         id="check-{{ req.requirement_code }}"
+                         data-req-code="{{ req.requirement_code }}"
+                         {% if req.is_completed %}checked{% endif %}>
+                  <label class="form-check-label fw-semibold text-dark pt-1 cursor-pointer" for="check-{{ req.requirement_code }}">
+                    {{ t('mark_as_prepared', 'I have this document ready') }}
+                  </label>
+                </div>
+              </div>
+
             </div>
           {% endfor %}
         </div>
@@ -192,15 +297,20 @@
       <!-- Preparation Summary Breakdown -->
       <div class="card border-0 shadow-sm p-4 bg-white rounded-3">
         <h5 class="fw-bold mb-3">📑 Status Breakdown</h5>
-        
-        <h6 class="text-success small fw-bold mb-2">✓ {{ t('completed_docs_title') }}</h6>
+
+        <h6 class="text-success small fw-bold mb-2">✓ Prepared Applicable Documents</h6>
         <ul class="list-unstyled small mb-3 ps-2" id="completedDocsList">
           <li class="text-muted fst-italic">None yet</li>
         </ul>
 
-        <h6 class="text-danger small fw-bold mb-2">● {{ t('remaining_docs_title') }}</h6>
-        <ul class="list-unstyled small mb-0 ps-2" id="remainingDocsList">
-          <li class="text-muted fst-italic">Loading...</li>
+        <h6 class="text-danger small fw-bold mb-2">● Pending Applicable Documents</h6>
+        <ul class="list-unstyled small mb-3 ps-2" id="remainingDocsList">
+          <li class="text-muted fst-italic">None pending</li>
+        </ul>
+
+        <h6 class="text-warning-emphasis small fw-bold mb-2">? Awaiting Citizen Decision</h6>
+        <ul class="list-unstyled small mb-0 ps-2" id="undeterminedDocsList">
+          <li class="text-muted fst-italic">None</li>
         </ul>
       </div>
     </div>
@@ -211,9 +321,9 @@
     <div class="d-flex gap-2">
       <span class="fs-4 text-warning">⚠️</span>
       <div class="small text-secondary">
-        <strong>Official Data Verification:</strong> This service was last verified from 
-        <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer">{{ service.portal_name }}</a> 
-        on <code>{{ service.verification_date }}</code>. SevaPath is an academic civic readiness assistant and does not guarantee certificate approval. Always adhere to official revenue guidelines.
+        <strong>Official Data Verification:</strong> This service was last verified from
+        <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer">{{ service.portal_name }}</a>
+        on <code>{{ service.verification_date }}</code>. SevaPath is an academic civic readiness assistant and does not guarantee certificate approval or eligibility.
       </div>
     </div>
   </div>
@@ -229,8 +339,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const slug = containerEl.getAttribute("data-service-slug");
   const lang = containerEl.getAttribute("data-lang") || "en";
-  const storageKey = `sevapath_session_${slug}`;
-  let sessionToken = localStorage.getItem(storageKey) || "";
 
   // CSRF token retrieval
   const csrfMeta = document.querySelector('meta[name="csrf-token"]');
@@ -250,31 +358,30 @@ document.addEventListener("DOMContentLoaded", function () {
   const acceptanceBadge = document.getElementById("acceptanceBadge");
   const completedCountDisplay = document.getElementById("completedCountDisplay");
   const remainingCountDisplay = document.getElementById("remainingCountDisplay");
-  const totalCountDisplay = document.getElementById("totalCountDisplay");
+  const undeterminedCountDisplay = document.getElementById("undeterminedCountDisplay");
+  const notApplicableCountDisplay = document.getElementById("notApplicableCountDisplay");
   const completedDocsList = document.getElementById("completedDocsList");
   const remainingDocsList = document.getElementById("remainingDocsList");
+  const undeterminedDocsList = document.getElementById("undeterminedDocsList");
   const btnReset = document.getElementById("btnResetProgress");
 
-  // Fetch initial state
+  // Fetch initial state via HttpOnly cookie
   function fetchState() {
-    let url = `/api/service/${slug}/state?lang=${lang}`;
-    if (sessionToken) url += `&session_token=${encodeURIComponent(sessionToken)}`;
-
-    fetch(url)
+    fetch(`/api/service/${slug}/state?lang=${lang}`, {
+      credentials: "same-origin"
+    })
       .then(res => res.json())
       .then(data => {
         if (data.status === "success") {
-          sessionToken = data.session_token;
           if (data.csrf_token) csrfToken = data.csrf_token;
-          localStorage.setItem(storageKey, sessionToken);
-          updateUI(data.progress, data.visualization);
+          updateUI(data.progress, data.visualization, data.requirements);
         }
       })
       .catch(err => console.error("Error loading DFA state:", err));
   }
 
   // Update DOM components reactively
-  function updateUI(progress, visualization) {
+  function updateUI(progress, visualization, requirements) {
     if (!progress) return;
 
     // 1. Current State Label
@@ -286,69 +393,167 @@ document.addEventListener("DOMContentLoaded", function () {
     readinessProgressBar.style.width = `${readiness}%`;
     readinessProgressBar.setAttribute("aria-valuenow", readiness);
 
-    if (readiness === 100.0) {
-      readinessProgressBar.className = "progress-bar bg-success";
-    } else {
-      readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
-    }
-
-    // 3. Acceptance Badge
     if (progress.is_accepting) {
+      readinessProgressBar.className = "progress-bar bg-success";
       acceptanceBadge.className = "badge bg-success fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "✓ Ready to Apply (Accepting F)";
+      acceptanceBadge.innerHTML = "✓ {{ t('status_complete', 'Preparation Complete') }}";
     } else if (progress.is_sink) {
+      readinessProgressBar.className = "progress-bar bg-danger";
       acceptanceBadge.className = "badge bg-danger fs-6 px-3 py-2";
       acceptanceBadge.innerHTML = "✕ Error State (q_sink)";
-    } else {
+    } else if (progress.readiness_stage === "undetermined") {
+      readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-warning";
       acceptanceBadge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "⏳ In Progress";
+      acceptanceBadge.innerHTML = "⏳ {{ t('status_undetermined', 'Decisions Pending') }}";
+    } else if (progress.readiness_stage === "not_started") {
+      readinessProgressBar.className = "progress-bar bg-secondary";
+      acceptanceBadge.className = "badge bg-secondary-subtle text-secondary border fs-6 px-3 py-2";
+      acceptanceBadge.innerHTML = "○ {{ t('status_not_started', 'Not Started') }}";
+    } else {
+      readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
+      acceptanceBadge.className = "badge bg-primary-subtle text-primary border border-primary fs-6 px-3 py-2";
+      acceptanceBadge.innerHTML = "⏳ {{ t('status_in_progress', 'In Progress') }}";
     }
 
-    // 4. Counters
+    // 3. Counters
     completedCountDisplay.textContent = progress.completed_count;
     remainingCountDisplay.textContent = progress.remaining_count;
-    totalCountDisplay.textContent = progress.total_applicable_requirements;
+    if (undeterminedCountDisplay) undeterminedCountDisplay.textContent = progress.undetermined_count;
+    if (notApplicableCountDisplay) notApplicableCountDisplay.textContent = progress.not_applicable_count;
 
-    // 5. Checkboxes state sync
-    const completedKeySet = new Set(progress.completed_documents.map(d => d.key));
-    document.querySelectorAll(".checklist-checkbox").forEach(cb => {
-      const code = cb.getAttribute("data-req-code");
-      const isDone = completedKeySet.has(code);
-      cb.checked = isDone;
+    // 4. Update Requirements UI rows if list provided
+    if (requirements) {
+      requirements.forEach(req => {
+        const code = req.requirement_code;
+        const app = req.applicability;
+        const isDone = req.is_completed === 1;
 
-      const row = document.getElementById(`item-row-${code}`);
-      if (row) {
-        if (isDone) {
-          row.classList.add("bg-success-subtle");
-        } else {
-          row.classList.remove("bg-success-subtle");
+        // Sync radio
+        const yesRadio = document.getElementById(`app-yes-${code}`);
+        const noRadio = document.getElementById(`app-no-${code}`);
+        const undRadio = document.getElementById(`app-und-${code}`);
+        if (yesRadio && app === "applicable") yesRadio.checked = true;
+        if (noRadio && app === "not_applicable") noRadio.checked = true;
+        if (undRadio && app === "undetermined") undRadio.checked = true;
+
+        // Toggle prep box visibility
+        const prepBox = document.getElementById(`prep-box-${code}`);
+        const altBox = document.getElementById(`alt-box-${code}`);
+        if (prepBox) prepBox.style.display = (app === "applicable") ? "block" : "none";
+        if (altBox) altBox.style.display = (app === "applicable") ? "block" : "none";
+
+        // Sync checkbox
+        const cb = document.getElementById(`check-${code}`);
+        if (cb) cb.checked = isDone;
+
+        // Highlight row
+        const row = document.getElementById(`item-row-${code}`);
+        if (row) {
+          row.classList.remove("bg-success-subtle", "bg-light");
+          if (app === "not_applicable") {
+            row.classList.add("bg-light");
+          } else if (isDone && app === "applicable") {
+            row.classList.add("bg-success-subtle");
+          }
         }
-      }
-    });
+      });
+    }
 
-    // 6. Summary Lists
+    // 5. Summary Breakdown Lists
     if (progress.completed_documents.length === 0) {
       completedDocsList.innerHTML = '<li class="text-muted fst-italic">None yet</li>';
     } else {
-      completedDocsList.innerHTML = progress.completed_documents.map(d => 
+      completedDocsList.innerHTML = progress.completed_documents.map(d =>
         `<li class="text-success fw-semibold">✓ ${d.name_en || d.key}</li>`
       ).join("");
     }
 
     if (progress.remaining_documents.length === 0) {
-      remainingDocsList.innerHTML = '<li class="text-success fst-italic">🎉 All requirements completed!</li>';
+      remainingDocsList.innerHTML = '<li class="text-muted fst-italic">None pending</li>';
     } else {
-      remainingDocsList.innerHTML = progress.remaining_documents.map(d => {
-        const mark = d.is_mandatory ? '<span class="text-danger">●</span>' : '<span class="text-muted">○</span>';
-        return `<li>${mark} ${d.name_en || d.key}</li>`;
-      }).join("");
+      remainingDocsList.innerHTML = progress.remaining_documents.map(d =>
+        `<li class="text-danger fw-semibold">● ${d.name_en || d.key}</li>`
+      ).join("");
     }
 
-    // 7. Render DFA Visualization
+    if (undeterminedDocsList) {
+      if (progress.undetermined_documents.length === 0) {
+        undeterminedDocsList.innerHTML = '<li class="text-muted fst-italic">None</li>';
+      } else {
+        undeterminedDocsList.innerHTML = progress.undetermined_documents.map(d =>
+          `<li class="text-warning-emphasis">? ${d.name_en || d.key}</li>`
+        ).join("");
+      }
+    }
+
+    // 6. Render DFA Visualization
     if (visualization) {
       visualizer.render(visualization);
     }
   }
+
+  // Handle Applicability Radio Toggles
+  document.querySelectorAll(".app-radio").forEach(radio => {
+    radio.addEventListener("change", function () {
+      const reqCode = this.getAttribute("data-req-code");
+      const applicability = this.value;
+
+      fetch(`/api/service/${slug}/applicability`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
+        body: JSON.stringify({
+          requirement_code: reqCode,
+          applicability: applicability,
+          lang: lang
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          updateUI(data.progress, data.visualization, data.requirements);
+        } else {
+          alert("Error: " + (data.error || "Failed to update applicability"));
+        }
+      })
+      .catch(err => console.error("Applicability update error:", err));
+    });
+  });
+
+  // Handle Alternative Radio Choice Toggles
+  document.querySelectorAll(".alt-radio").forEach(radio => {
+    radio.addEventListener("change", function () {
+      const reqCode = this.getAttribute("data-req-code");
+      const selectedAlt = this.value;
+      const cb = document.getElementById(`check-${reqCode}`);
+      const isCompleted = cb ? cb.checked : false;
+
+      fetch(`/api/service/${slug}/toggle`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
+        body: JSON.stringify({
+          requirement_code: reqCode,
+          is_completed: isCompleted,
+          selected_alternative: selectedAlt,
+          lang: lang
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          updateUI(data.progress, data.visualization, null);
+        }
+      })
+      .catch(err => console.error("Alternative select error:", err));
+    });
+  });
 
   // Handle Checkbox Toggles
   document.querySelectorAll(".checklist-checkbox").forEach(cb => {
@@ -356,26 +561,32 @@ document.addEventListener("DOMContentLoaded", function () {
       const reqCode = this.getAttribute("data-req-code");
       const isCompleted = this.checked;
 
+      // Check if alternative selected
+      let selectedAlt = null;
+      const checkedAlt = document.querySelector(`input[name="alt-choice-${reqCode}"]:checked`);
+      if (checkedAlt) selectedAlt = checkedAlt.value;
+
       fetch(`/api/service/${slug}/toggle`, {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": csrfToken
         },
         body: JSON.stringify({
-          session_token: sessionToken,
           requirement_code: reqCode,
           is_completed: isCompleted,
+          selected_alternative: selectedAlt,
           lang: lang
         })
       })
       .then(res => res.json())
       .then(data => {
         if (data.status === "success") {
-          updateUI(data.progress, data.visualization);
+          updateUI(data.progress, data.visualization, null);
         } else {
           alert("Error: " + (data.error || "Failed to update"));
-          cb.checked = !isCompleted; // revert on error
+          cb.checked = !isCompleted;
         }
       })
       .catch(err => {
@@ -392,19 +603,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
       fetch(`/api/service/${slug}/reset`, {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": csrfToken
         },
         body: JSON.stringify({
-          session_token: sessionToken,
           lang: lang
         })
       })
       .then(res => res.json())
       .then(data => {
         if (data.status === "success") {
-          updateUI(data.progress, data.visualization);
+          fetchState();
         }
       })
       .catch(err => console.error("Reset error:", err));

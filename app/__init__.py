@@ -35,8 +35,10 @@ def create_app(config_name: str = "default") -> Flask:
     # Register blueprints
     from app.routes.main import main_bp
     from app.routes.api import api_bp
+    from app.routes.reports import reports_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(reports_bp)
 
     # Register context processors for language and template helpers
     @app.context_processor

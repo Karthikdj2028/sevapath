@@ -1,26 +1,43 @@
 """
-SevaPath API Blueprint for DFA Preparation Engine & Regex Validation.
+SevaPath API Blueprint for Anonymous Citizen DFA Preparation Engine & Regex Validation.
 
 Provides JSON endpoints for:
-- Retrieving cryptographically random session CSRF tokens (with Cache-Control: no-store).
-- Initializing or retrieving preparation session states.
-- Marking requirements completed/incomplete with DFA transitions (Strict X-CSRF-Token protected).
-- Resetting preparation progress (Strict X-CSRF-Token protected).
-- Defensive JSON parsing and strict language validation (en, ta).
-- Syntax and format validation for mobile numbers and email (no persistence, zero logging).
+- Retrieving session CSRF tokens (Strict X-CSRF-Token protected).
+- Anonymous cookie-bound citizen session state retrieval.
+- Updating requirement applicability decisions ('applicable', 'not_applicable', 'undetermined').
+- Marking requirements completed/incomplete with dynamic DFA transitions.
+- Resetting service preparation progress.
+- Session invalidation (logout).
+- Defensive JSON parsing and strict language validation ('en', 'ta').
+- Syntax and format validation for mobile numbers and email (zero persistence, zero logging).
 """
 
 from typing import Tuple, Optional, Dict, Any
 from flask import Blueprint, request, jsonify, current_app
+
 from app.models.database import (
     get_service_by_slug,
-    get_or_create_session,
+    get_or_create_preparation_session,
+    get_service_requirements_with_citizen_state,
+    update_session_item_applicability,
+    update_session_item_completion,
+    reset_service_preparation,
     get_session_completed_keys,
-    update_session_requirement,
-    reset_session_progress,
-    build_service_dfa
+    build_service_dfa,
+    revoke_citizen_session_by_id
 )
-from app.core.security import get_csrf_token, verify_csrf_token
+from app.core.security import (
+    get_csrf_token,
+    generate_csrf_token,
+    verify_csrf_token,
+    resolve_citizen_session,
+    authenticate_citizen_session,
+    rotate_citizen_session,
+    set_citizen_cookie,
+    clear_citizen_cookie,
+    CITIZEN_COOKIE_NAME,
+    hash_token
+)
 from app.core.regex_validator import RegexValidator
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -29,13 +46,7 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 def parse_json_object(req) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Any, int]]]:
     """
     Defensively parses request body ensuring it is strictly a JSON object (dictionary).
-    
-    Rejects:
-    - Arrays (lists), strings, numbers, booleans, null (None), and malformed JSON.
-    
-    Returns:
-        Tuple[Optional[Dict[str, Any]], Optional[Tuple[Response, int]]]:
-        (data_dict, None) on success, or (None, (error_response, 400)) on failure.
+    Rejects arrays (lists), strings, numbers, booleans, null, and malformed JSON with HTTP 400.
     """
     if not req.is_json:
         return None, (jsonify({"error": "Request body must be a valid JSON object."}), 400)
@@ -54,9 +65,7 @@ def parse_json_object(req) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Any
 def parse_language(data: Dict[str, Any]) -> Tuple[Optional[str], Optional[Tuple[Any, int]]]:
     """
     Validates the optional 'lang' parameter.
-    
     Only 'en' and 'ta' are accepted. Defaults safely to DEFAULT_LANGUAGE if omitted.
-    Returns 400 if an invalid language code is explicitly provided.
     """
     if "lang" in data and data["lang"] is not None:
         lang = data["lang"]
@@ -70,13 +79,17 @@ def parse_language(data: Dict[str, Any]) -> Tuple[Optional[str], Optional[Tuple[
 @api_bp.route("/csrf-token", methods=["GET"])
 def get_csrf():
     """
-    Returns the active session CSRF token.
+    Returns the active session CSRF token bound to the citizen session identity.
     Enforces Cache-Control: no-store to prevent token caching by proxies/browsers.
     """
-    token = get_csrf_token()
+    citizen_sess, raw_token, is_new_or_rotated = resolve_citizen_session(request)
+    citizen_id = citizen_sess["id"] if citizen_sess else None
+    token = get_csrf_token(citizen_id)
     response = jsonify({"csrf_token": token})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
+    if is_new_or_rotated and raw_token:
+        set_citizen_cookie(response, raw_token)
     return response, 200
 
 
@@ -84,14 +97,7 @@ def get_csrf():
 def validate_format_endpoint():
     """
     Validates input format for supported fields (phone, email).
-    
-    Privacy & Security Guarantees:
-    - Defensive JSON parsing: rejects arrays, strings, numbers, null with 400.
-    - Validates language parameter ('en', 'ta').
-    - Never stores, caches, or logs submitted values.
-    - Never logs request body containing personal data.
-    - Does not echo sensitive inputs in error responses.
-    - Does not collect or validate Aadhaar numbers.
+    Never stores, caches, or logs submitted values.
     """
     data, err = parse_json_object(request)
     if err:
@@ -113,174 +119,315 @@ def validate_format_endpoint():
     return response, 200
 
 
+@api_bp.route("/citizen/session", methods=["GET"])
+def get_citizen_session_info():
+    """
+    Returns non-sensitive metadata about the active anonymous citizen session.
+    Never exposes raw tokens or token hashes.
+    """
+    citizen_sess, raw_token, is_new_or_rotated = resolve_citizen_session(request)
+    response = jsonify({
+        "status": "success",
+        "authenticated": True,
+        "expires_at": citizen_sess["expires_at"]
+    })
+    response.headers["Cache-Control"] = "no-store, private"
+    if is_new_or_rotated and raw_token:
+        set_citizen_cookie(response, raw_token)
+    return response, 200
+
+
+@api_bp.route("/citizen/logout", methods=["POST"])
+def logout_citizen():
+    """
+    Revokes the current citizen session identity and clears the session cookie.
+    Requires authenticated citizen session and strict CSRF validation.
+    """
+    citizen_sess, auth_err = authenticate_citizen_session(request)
+    if auth_err:
+        return jsonify({"error": f"Authentication required. {auth_err}"}), 401
+
+    submitted_csrf = request.headers.get("X-CSRF-Token")
+    if not verify_csrf_token(submitted_csrf, citizen_session_id=citizen_sess["id"]):
+        return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
+
+    revoke_citizen_session_by_id(citizen_sess["id"])
+
+    response = jsonify({"status": "success", "message": "Citizen session revoked."})
+    response.headers["Cache-Control"] = "no-store, private"
+    clear_citizen_cookie(response)
+    return response, 200
+
+
+@api_bp.route("/citizen/rotate", methods=["POST"])
+def rotate_citizen_token_endpoint():
+    """
+    Explicitly rotates the citizen's anonymous session token using race-safe compare-and-swap.
+    Invalidates the old token immediately for mutations.
+    Requires authenticated citizen session and strict CSRF validation.
+    """
+    citizen_sess, auth_err = authenticate_citizen_session(request)
+    if auth_err:
+        return jsonify({"error": f"Authentication required. {auth_err}"}), 401
+
+    submitted_csrf = request.headers.get("X-CSRF-Token")
+    if not verify_csrf_token(submitted_csrf, citizen_session_id=citizen_sess["id"]):
+        return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
+
+    raw_cookie = request.cookies.get(CITIZEN_COOKIE_NAME)
+    new_raw_token, updated_sess, err = rotate_citizen_session(raw_cookie)
+    if err or not new_raw_token:
+        return jsonify({"error": f"Rotation failed: {err}"}), 409
+
+    # Re-bind CSRF token to rotated identity
+    csrf_token = generate_csrf_token(updated_sess["id"])
+
+    response = jsonify({
+        "status": "success",
+        "message": "Citizen session token successfully rotated.",
+        "expires_at": updated_sess["expires_at"],
+        "csrf_token": csrf_token
+    })
+    response.headers["Cache-Control"] = "no-store, private"
+    set_citizen_cookie(response, new_raw_token)
+    return response, 200
+
+
 @api_bp.route("/service/<slug>/state", methods=["GET"])
 def get_service_state(slug):
     """
-    Retrieves the current DFA state and progress for a service and session.
+    Retrieves the current DFA state and citizen preparation progress for a service.
+    Authenticated exclusively via HttpOnly cookie; ignores legacy URL query parameters.
     """
     lang = request.args.get("lang", current_app.config["DEFAULT_LANGUAGE"])
     if lang not in current_app.config["SUPPORTED_LANGUAGES"]:
         lang = current_app.config["DEFAULT_LANGUAGE"]
 
-    session_token = request.args.get("session_token")
-    
-    # Conditional flags
-    is_it_assessee = request.args.get("is_it_assessee", "0") == "1"
-    active_conditions = {"is_it_assessee": is_it_assessee}
-
-    dfa, service = build_service_dfa(slug, lang_code=lang, active_conditions=active_conditions)
-    if not dfa or not service:
+    service = get_service_by_slug(slug, lang_code=lang)
+    if not service:
         return jsonify({"error": f"Service '{slug}' not found."}), 404
 
-    # Get or create isolated session
-    sess = get_or_create_session(service["id"], session_token)
-    session_id = sess["session_id"]
-    active_token = sess["session_token"]
+    # Resolve anonymous citizen session
+    citizen_sess, raw_token, is_new_or_rotated = resolve_citizen_session(request)
+    citizen_id = citizen_sess["id"]
 
-    # Fetch completed keys from SQLite session
+    prep_sess = get_or_create_preparation_session(citizen_id, service["id"])
+    session_id = prep_sess["id"]
+
+    # Build DFA with citizen applicability
+    dfa, _ = build_service_dfa(slug, citizen_session_id=citizen_id, lang_code=lang)
     completed_keys = get_session_completed_keys(session_id)
-    
-    # Compute DFA state bitmask
-    current_state = dfa.requirements_to_state(completed_keys)
+    current_state = dfa.requirements_to_state(completed_keys) if dfa else 0
 
-    # Progress summary and visualization graph
-    progress = dfa.get_progress_summary(current_state)
-    graph = dfa.get_visualization_graph(current_state)
+    progress = dfa.get_progress_summary(current_state) if dfa else {}
+    graph = dfa.get_visualization_graph(current_state) if dfa else {}
+    requirements = get_service_requirements_with_citizen_state(service["id"], session_id, lang_code=lang)
 
-    # Ensure CSRF token is initialized for this session
     csrf_tok = get_csrf_token()
 
-    return jsonify({
+    response = jsonify({
         "status": "success",
         "service_slug": slug,
         "service_name": service["name"],
-        "session_token": active_token,
         "csrf_token": csrf_tok,
         "progress": progress,
         "visualization": graph,
+        "requirements": requirements,
         "official_source": {
             "portal": service["portal_name"],
             "url": service["source_url"],
             "verified_date": service["verification_date"]
         }
-    }), 200
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+
+    if is_new_or_rotated and raw_token:
+        set_citizen_cookie(response, raw_token)
+
+    return response, 200
+
+
+@api_bp.route("/service/<slug>/applicability", methods=["POST"])
+def update_applicability(slug):
+    """
+    Updates the citizen-specific applicability decision for a requirement.
+    Options: 'applicable', 'not_applicable', 'undetermined'.
+    Strictly X-CSRF-Token and authenticated cookie-session protected.
+    """
+    # 1. Authenticate Citizen Session (Strict HttpOnly Cookie)
+    citizen_sess, auth_err = authenticate_citizen_session(request)
+    if auth_err:
+        return jsonify({"error": f"Authentication required: {auth_err}"}), 401
+
+    # 2. Strict CSRF Header Verification bound to citizen identity
+    submitted_csrf = request.headers.get("X-CSRF-Token")
+    if not verify_csrf_token(submitted_csrf, citizen_session_id=citizen_sess["id"]):
+        return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
+
+    # 3. Defensive JSON Parsing
+    data, err = parse_json_object(request)
+    if err:
+        return err
+
+    # 4. Language Validation
+    lang, lang_err = parse_language(data)
+    if lang_err:
+        return lang_err
+
+    req_code = data.get("requirement_code")
+    applicability = data.get("applicability")
+
+    if not req_code or not applicability:
+        return jsonify({"error": "Both 'requirement_code' and 'applicability' are required."}), 400
+
+    service = get_service_by_slug(slug, lang_code=lang)
+    if not service:
+        return jsonify({"error": f"Service '{slug}' not found."}), 404
+
+    # 5. Access citizen preparation session
+    citizen_id = citizen_sess["id"]
+    prep_sess = get_or_create_preparation_session(citizen_id, service["id"])
+    session_id = prep_sess["id"]
+
+    # 6. Update applicability in database
+    success, err_msg = update_session_item_applicability(session_id, service["id"], req_code, applicability)
+    if not success:
+        return jsonify({"error": err_msg}), 400
+
+    # 7. Rebuild DFA and return updated progress
+    dfa, _ = build_service_dfa(slug, citizen_session_id=citizen_id, lang_code=lang)
+    completed_keys = get_session_completed_keys(session_id)
+    current_state = dfa.requirements_to_state(completed_keys) if dfa else 0
+
+    progress = dfa.get_progress_summary(current_state) if dfa else {}
+    graph = dfa.get_visualization_graph(current_state) if dfa else {}
+    requirements = get_service_requirements_with_citizen_state(service["id"], session_id, lang_code=lang)
+
+    response = jsonify({
+        "status": "success",
+        "service_slug": slug,
+        "progress": progress,
+        "visualization": graph,
+        "requirements": requirements
+    })
+    response.headers["Cache-Control"] = "no-store, private"
+    return response, 200
 
 
 @api_bp.route("/service/<slug>/toggle", methods=["POST"])
 def toggle_requirement(slug):
     """
-    Applies a completion or revocation event to the DFA and persists the transition.
-    
-    Security & Safety:
-    - Defensive JSON parsing: rejects arrays, strings, numbers, null with HTTP 400.
-    - Enforces STRICT X-CSRF-Token header validation exclusively (no JSON body fallback).
-    - Missing, empty, malformed, or forged tokens receive HTTP 403 Forbidden.
-    - Validates anonymous session ownership against service_id.
-    - Rejects invalid requirement IDs with 400 Bad Request without corrupting state.
+    Applies completion or revocation of a document to the DFA and persists the transition.
+    Strictly X-CSRF-Token and authenticated cookie-session protected.
     """
-    # 1. Strict CSRF Header Verification (Header required exclusively)
+    # 1. Authenticate Citizen Session (Strict HttpOnly Cookie)
+    citizen_sess, auth_err = authenticate_citizen_session(request)
+    if auth_err:
+        return jsonify({"error": f"Authentication required: {auth_err}"}), 401
+
+    # 2. Strict CSRF Header Verification bound to citizen identity
     submitted_csrf = request.headers.get("X-CSRF-Token")
-    if not verify_csrf_token(submitted_csrf):
+    if not verify_csrf_token(submitted_csrf, citizen_session_id=citizen_sess["id"]):
         return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
 
-    # 2. Defensive JSON Object Parsing
+    # 3. Defensive JSON Parsing
     data, err = parse_json_object(request)
     if err:
         return err
 
-    # 3. Language Validation
+    # 4. Language Validation
     lang, lang_err = parse_language(data)
     if lang_err:
         return lang_err
 
-    session_token = data.get("session_token")
     req_code = data.get("requirement_code")
     is_completed = bool(data.get("is_completed", True))
+    selected_alt = data.get("selected_alternative")
 
-    if not session_token or not req_code:
-        return jsonify({"error": "Both 'session_token' and 'requirement_code' are required."}), 400
+    if not req_code:
+        return jsonify({"error": "'requirement_code' is required."}), 400
 
-    dfa, service = build_service_dfa(slug, lang_code=lang)
-    if not dfa or not service:
+    service = get_service_by_slug(slug, lang_code=lang)
+    if not service:
         return jsonify({"error": f"Service '{slug}' not found."}), 404
 
-    # 4. Validate session ownership
-    sess = get_or_create_session(service["id"], session_token)
-    if sess["session_token"] != session_token:
-        return jsonify({"error": "Unauthorized or mismatched session token."}), 403
+    # 5. Access citizen preparation session
+    citizen_id = citizen_sess["id"]
+    prep_sess = get_or_create_preparation_session(citizen_id, service["id"])
+    session_id = prep_sess["id"]
 
-    session_id = sess["session_id"]
-
-    # 5. Update database session (rejects invalid requirement_code without corrupting state)
-    success, err_msg = update_session_requirement(session_id, service["id"], req_code, is_completed)
+    # 6. Update requirement completion in SQLite
+    success, err_msg = update_session_item_completion(session_id, service["id"], req_code, is_completed, selected_alt)
     if not success:
         return jsonify({"error": err_msg}), 400
 
-    # Retrieve updated completed keys and compute new DFA state
+    # 7. Rebuild DFA and compute new state
+    dfa, _ = build_service_dfa(slug, citizen_session_id=citizen_id, lang_code=lang)
     completed_keys = get_session_completed_keys(session_id)
-    current_state = dfa.requirements_to_state(completed_keys)
+    current_state = dfa.requirements_to_state(completed_keys) if dfa else 0
 
-    progress = dfa.get_progress_summary(current_state)
-    graph = dfa.get_visualization_graph(current_state)
+    progress = dfa.get_progress_summary(current_state) if dfa else {}
+    graph = dfa.get_visualization_graph(current_state) if dfa else {}
 
-    return jsonify({
+    response = jsonify({
         "status": "success",
         "service_slug": slug,
-        "session_token": session_token,
         "progress": progress,
-        "visualization": graph,
-    }), 200
+        "visualization": graph
+    })
+    response.headers["Cache-Control"] = "no-store, private"
+    return response, 200
 
 
 @api_bp.route("/service/<slug>/reset", methods=["POST"])
 def reset_progress(slug):
     """
-    Resets the session state back to q_0 (all documents uncompleted).
-    
-    Security & Safety:
-    - Defensive JSON parsing: rejects arrays, strings, numbers, null with HTTP 400.
-    - Enforces STRICT X-CSRF-Token header validation exclusively (no JSON body fallback).
-    - Missing, empty, malformed, or forged tokens receive HTTP 403 Forbidden.
-    - Validates anonymous session ownership against service_id.
+    Resets progress and applicability for this service back to initial state.
+    Strictly X-CSRF-Token and authenticated cookie-session protected.
     """
-    # 1. Strict CSRF Header Verification
+    # 1. Authenticate Citizen Session (Strict HttpOnly Cookie)
+    citizen_sess, auth_err = authenticate_citizen_session(request)
+    if auth_err:
+        return jsonify({"error": f"Authentication required: {auth_err}"}), 401
+
+    # 2. Strict CSRF Header Verification bound to citizen identity
     submitted_csrf = request.headers.get("X-CSRF-Token")
-    if not verify_csrf_token(submitted_csrf):
+    if not verify_csrf_token(submitted_csrf, citizen_session_id=citizen_sess["id"]):
         return jsonify({"error": "CSRF token missing or invalid. Requires valid 'X-CSRF-Token' header."}), 403
 
-    # 2. Defensive JSON Object Parsing
+    # 3. Defensive JSON Parsing
     data, err = parse_json_object(request)
     if err:
         return err
 
-    # 3. Language Validation
+    # 4. Language Validation
     lang, lang_err = parse_language(data)
     if lang_err:
         return lang_err
 
-    session_token = data.get("session_token")
-    if not session_token:
-        return jsonify({"error": "'session_token' is required."}), 400
-
-    dfa, service = build_service_dfa(slug, lang_code=lang)
-    if not dfa or not service:
+    service = get_service_by_slug(slug, lang_code=lang)
+    if not service:
         return jsonify({"error": f"Service '{slug}' not found."}), 404
 
-    # 4. Validate session ownership
-    sess = get_or_create_session(service["id"], session_token)
-    if sess["session_token"] != session_token:
-        return jsonify({"error": "Unauthorized session token."}), 403
+    # 5. Access citizen preparation session
+    citizen_id = citizen_sess["id"]
+    prep_sess = get_or_create_preparation_session(citizen_id, service["id"])
+    session_id = prep_sess["id"]
 
-    reset_session_progress(sess["session_id"], service["id"])
+    # 6. Reset service preparation
+    reset_service_preparation(session_id, service["id"])
 
-    # Initial state q_0
-    progress = dfa.get_progress_summary(dfa.q_0)
-    graph = dfa.get_visualization_graph(dfa.q_0)
+    # 7. Build DFA with clean initial state
+    dfa, _ = build_service_dfa(slug, citizen_session_id=citizen_id, lang_code=lang)
+    progress = dfa.get_progress_summary(dfa.q_0) if dfa else {}
+    graph = dfa.get_visualization_graph(dfa.q_0) if dfa else {}
 
-    return jsonify({
+    response = jsonify({
         "status": "success",
         "service_slug": slug,
-        "session_token": session_token,
         "progress": progress,
-        "visualization": graph,
-    }), 200
+        "visualization": graph
+    })
+    response.headers["Cache-Control"] = "no-store, private"
+    return response, 200

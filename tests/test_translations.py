@@ -34,3 +34,27 @@ def test_set_language_redirect(client):
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "சேவாபாத்" in html
+
+
+def test_anonymous_session_advisory_bilingual(client):
+    """Verifies that the anonymous-session advisory renders properly in English and Tamil."""
+    # 1. Homepage English
+    res_en = client.get("/?lang=en")
+    assert res_en.status_code == 200
+    html_en = res_en.get_data(as_text=True)
+    assert "Anonymous Session Notice" in html_en
+    assert "Your checklist is linked to this browser" in html_en
+
+    # 2. Homepage Tamil
+    res_ta = client.get("/?lang=ta")
+    assert res_ta.status_code == 200
+    html_ta = res_ta.get_data(as_text=True)
+    assert "அநாமதேய அமர்வு வழிகாட்டுதல்" in html_ta
+    assert "14 நாட்களுக்குப் பிறகு இந்த அமர்வு காலாவதியாகும்" in html_ta
+
+    # 3. Service Detail View English
+    detail_en = client.get("/service/income-certificate?lang=en")
+    assert detail_en.status_code == 200
+    detail_html_en = detail_en.get_data(as_text=True)
+    assert "Anonymous Session Notice" in detail_html_en
+    assert "SevaPath does not collect personal credentials" in detail_html_en
