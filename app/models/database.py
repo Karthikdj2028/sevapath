@@ -127,8 +127,6 @@ CREATE INDEX IF NOT EXISTS idx_service_translations_lang ON service_translations
 CREATE INDEX IF NOT EXISTS idx_requirements_service ON requirements(service_id);
 CREATE INDEX IF NOT EXISTS idx_req_translations_lang ON requirement_translations(requirement_id, lang_code);
 CREATE INDEX IF NOT EXISTS idx_citizen_sessions_hash ON citizen_sessions(token_hash);
-CREATE INDEX IF NOT EXISTS idx_prep_sessions_citizen ON preparation_sessions(citizen_session_id);
-CREATE INDEX IF NOT EXISTS idx_session_items_applicability ON session_items(session_id, applicability);
 """
 
 

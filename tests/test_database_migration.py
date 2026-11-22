@@ -163,3 +163,170 @@ def test_atomic_rollback_on_migration_failure(tmp_path):
     assert "services" in tables
 
     conn.close()
+
+
+def test_init_db_successfully_upgrades_legacy_phase3_database(tmp_path):
+    """
+    Regression test: Verifies that init_db() successfully starts up against
+    and upgrades an authentic legacy Phase 3 SQLite database without raising
+    OperationalError, preserves both completed and incomplete historical records,
+    creates migration-dependent indexes, and validates foreign key integrity.
+    """
+    from app import create_app
+    from app.models.database import init_db
+
+    db_path = str(tmp_path / "legacy_phase3_startup.sqlite")
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON;")
+
+    # 1. Construct authentic Phase 3 schema from commit a38d9ff
+    conn.executescript("""
+        CREATE TABLE services (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT UNIQUE NOT NULL,
+            department TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE service_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            service_id INTEGER NOT NULL,
+            lang_code TEXT NOT NULL CHECK(lang_code IN ('en', 'ta')),
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            benefits TEXT,
+            processing_time TEXT NOT NULL,
+            official_fee TEXT NOT NULL,
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+            UNIQUE (service_id, lang_code)
+        );
+        CREATE TABLE official_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            service_id INTEGER NOT NULL,
+            portal_name TEXT NOT NULL,
+            source_url TEXT NOT NULL,
+            verification_date TEXT NOT NULL,
+            jurisdiction TEXT NOT NULL DEFAULT 'Tamil Nadu, India',
+            is_verified INTEGER DEFAULT 1,
+            notes TEXT,
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+        );
+        CREATE TABLE requirements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            service_id INTEGER NOT NULL,
+            requirement_code TEXT NOT NULL,
+            is_mandatory INTEGER DEFAULT 1,
+            document_type TEXT NOT NULL,
+            order_seq INTEGER DEFAULT 0,
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+            UNIQUE (service_id, requirement_code)
+        );
+        CREATE TABLE requirement_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requirement_id INTEGER NOT NULL,
+            lang_code TEXT NOT NULL CHECK(lang_code IN ('en', 'ta')),
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            help_text TEXT,
+            FOREIGN KEY (requirement_id) REFERENCES requirements(id) ON DELETE CASCADE,
+            UNIQUE (requirement_id, lang_code)
+        );
+        CREATE TABLE preparation_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_token TEXT UNIQUE NOT NULL,
+            service_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+        );
+        CREATE TABLE session_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            requirement_id INTEGER NOT NULL,
+            is_completed INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES preparation_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (requirement_id) REFERENCES requirements(id) ON DELETE CASCADE,
+            UNIQUE (session_id, requirement_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_services_slug ON services(slug);
+        CREATE INDEX IF NOT EXISTS idx_service_translations_lang ON service_translations(service_id, lang_code);
+        CREATE INDEX IF NOT EXISTS idx_requirements_service ON requirements(service_id);
+        CREATE INDEX IF NOT EXISTS idx_req_translations_lang ON requirement_translations(requirement_id, lang_code);
+    """)
+
+    # 2. Insert realistic historical service, requirement, preparation sessions, and items
+    conn.execute("INSERT INTO services (id, slug, department) VALUES (1, 'income-certificate', 'Revenue');")
+    conn.execute("INSERT INTO requirements (id, service_id, requirement_code, is_mandatory, document_type, order_seq) VALUES (1, 1, 'salary_slip', 1, 'document', 1);")
+    conn.execute("INSERT INTO requirements (id, service_id, requirement_code, is_mandatory, document_type, order_seq) VALUES (2, 1, 'ration_card', 1, 'document', 2);")
+    conn.execute("INSERT INTO preparation_sessions (id, session_token, service_id) VALUES (1, 'legacy_session_token_1', 1);")
+    conn.execute("INSERT INTO preparation_sessions (id, session_token, service_id) VALUES (2, 'legacy_session_token_2', 1);")
+    # Include both completed and incomplete checklist items
+    conn.execute("INSERT INTO session_items (id, session_id, requirement_id, is_completed) VALUES (1, 1, 1, 1);") # completed
+    conn.execute("INSERT INTO session_items (id, session_id, requirement_id, is_completed) VALUES (2, 1, 2, 0);") # incomplete
+    conn.execute("INSERT INTO session_items (id, session_id, requirement_id, is_completed) VALUES (3, 2, 1, 1);") # completed
+    conn.commit()
+    conn.close()
+
+    # 3. Create Flask testing app pointing to the legacy database
+    app = create_app("testing")
+    app.config["DATABASE_PATH"] = db_path
+
+    # 4. Invoke init_db(app) - must succeed without sqlite3.OperationalError
+    with app.app_context():
+        init_db(app)
+
+    # 5. Open and inspect post-upgrade database
+    verify_conn = sqlite3.connect(db_path)
+    verify_conn.row_factory = sqlite3.Row
+
+    # 6. Verify migrated columns and actual migration defaults
+    prep_cols = {r["name"]: r for r in verify_conn.execute("PRAGMA table_info(preparation_sessions);").fetchall()}
+    assert "citizen_session_id" in prep_cols
+    assert prep_cols["citizen_session_id"]["dflt_value"] in (None, "NULL")
+
+    req_cols = {r["name"]: r for r in verify_conn.execute("PRAGMA table_info(requirements);").fetchall()}
+    assert "presentation_category" in req_cols
+    assert req_cols["presentation_category"]["dflt_value"] == "'legacy_unreviewed'"
+    assert "is_active" in req_cols
+    assert req_cols["is_active"]["dflt_value"] == "0"
+    assert "logical_group" in req_cols
+    assert req_cols["logical_group"]["dflt_value"] in (None, "NULL")
+
+    item_cols = {r["name"]: r for r in verify_conn.execute("PRAGMA table_info(session_items);").fetchall()}
+    assert "applicability" in item_cols
+    assert item_cols["applicability"]["dflt_value"] == "'undetermined'"
+    assert "selected_alternative" in item_cols
+    assert item_cols["selected_alternative"]["dflt_value"] in (None, "NULL")
+
+    # 7. Verify migration tracking
+    mig = verify_conn.execute("SELECT version, name FROM schema_migrations WHERE version = 1;").fetchone()
+    assert mig is not None
+    assert mig["version"] == 1
+    assert "phase_4" in mig["name"]
+
+    # 8. Verify migration-dependent indexes
+    indexes = {r["name"] for r in verify_conn.execute("SELECT name FROM sqlite_master WHERE type='index';").fetchall()}
+    assert "idx_prep_sessions_citizen" in indexes
+    assert "idx_session_items_applicability" in indexes
+
+    # 9. Verify historical records and completion states are 100% preserved
+    items = {r["id"]: dict(r) for r in verify_conn.execute("SELECT id, session_id, requirement_id, is_completed, applicability FROM session_items WHERE session_id = 1;").fetchall()}
+    assert items[1]["is_completed"] == 1  # completed item stayed completed
+    assert items[1]["applicability"] == "undetermined"
+    assert items[2]["is_completed"] == 0  # incomplete item stayed incomplete
+    assert items[2]["applicability"] == "undetermined"
+
+    sessions = {r["id"]: dict(r) for r in verify_conn.execute("SELECT id, session_token, citizen_session_id FROM preparation_sessions;").fetchall()}
+    assert sessions[1]["session_token"] == "legacy_session_token_1"
+    assert sessions[1]["citizen_session_id"] is None
+    assert sessions[2]["session_token"] == "legacy_session_token_2"
+
+    # 10. Verify integrity and foreign key constraints
+    fk_violations = verify_conn.execute("PRAGMA foreign_key_check;").fetchall()
+    assert len(fk_violations) == 0
+    integrity = verify_conn.execute("PRAGMA integrity_check;").fetchone()[0]
+    assert integrity == "ok"
+
+    verify_conn.close()
