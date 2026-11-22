@@ -3,21 +3,43 @@ SevaPath Application Factory.
 """
 
 import os
+from typing import Optional
 from flask import Flask, render_template, request, session
-from config import config_by_name
+from config import config_by_name, ProductionConfig
 from app.models.database import close_db, init_db
 from app.translations import get_translation, TRANSLATIONS
 from app.core.security import get_csrf_token
 
 
-def create_app(config_name: str = "default") -> Flask:
-    """Application factory for SevaPath."""
+def create_app(config_name: Optional[str] = None) -> Flask:
+    """
+    Application factory for SevaPath.
+
+    Environment resolution:
+    - If config_name is None, defaults to SEVAPATH_ENV or 'default'.
+    - Fails closed with ValueError if an unknown environment is supplied.
+    """
+    if config_name is None:
+        config_name = os.environ.get("SEVAPATH_ENV", "default")
+
+    # Fail closed on unknown environment names
+    if config_name not in config_by_name:
+        valid_envs = ", ".join(sorted(config_by_name.keys()))
+        raise ValueError(
+            f"CRITICAL CONFIGURATION ERROR: Unknown environment '{config_name}'. "
+            f"Application refused to start. Valid configurations: [{valid_envs}]."
+        )
+
+    config_cls = config_by_name[config_name]
     app = Flask(__name__)
-    config_cls = config_by_name.get(config_name, config_by_name["default"])
     app.config.from_object(config_cls)
 
-    # Production security validation: require explicit non-default SECRET_KEY from environment
-    if config_name == "production":
+    # Production security validation using robust class hierarchy / identity check
+    is_production = (
+        config_name == "production"
+        or (isinstance(config_cls, type) and issubclass(config_cls, ProductionConfig))
+    )
+    if is_production:
         secret = os.environ.get("SECRET_KEY")
         if not secret or secret == "sevapath-dev-insecure-secret-key-2026":
             raise RuntimeError(
@@ -25,6 +47,25 @@ def create_app(config_name: str = "default") -> Flask:
                 "Application refused to start with missing or default development key."
             )
         app.config["SECRET_KEY"] = secret
+
+    # Apply ProxyFix middleware only when enabled and hops == 1 (single-hop trusted edge proxy)
+    if app.config.get("PROXY_FIX_ENABLED", False):
+        hops_env = os.environ.get("PROXY_FIX_HOPS")
+        hops = int(hops_env) if hops_env is not None else app.config.get("PROXY_FIX_HOPS", 1)
+        if hops != 1:
+            raise ValueError(
+                f"CRITICAL CONFIGURATION ERROR: Phase 5.1 strictly enforces a single trusted proxy hop (PROXY_FIX_HOPS=1). "
+                f"Got: {hops}."
+            )
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=hops,
+            x_proto=hops,
+            x_host=0,     # Disabled: do not trust arbitrary host headers
+            x_port=0,     # Disabled: derive port from scheme
+            x_prefix=0    # Disabled: no subpath prefix
+        )
 
     # Ensure instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)

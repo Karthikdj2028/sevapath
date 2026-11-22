@@ -18,10 +18,18 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False  # Enabled in ProductionConfig for HTTPS
 
+    # Request payload boundary protection (1 MB)
+    MAX_CONTENT_LENGTH = 1024 * 1024  # 1,048,576 bytes
+
+    # Reverse proxy middleware flag
+    PROXY_FIX_ENABLED = False
+    PROXY_FIX_HOPS = 1
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
     DEBUG = True
+    PROXY_FIX_ENABLED = False
 
 
 class TestingConfig(Config):
@@ -29,6 +37,7 @@ class TestingConfig(Config):
     TESTING = True
     DEBUG = False
     DATABASE_PATH = os.path.join(BASE_DIR, "instance", "test_sevapath.sqlite")
+    PROXY_FIX_ENABLED = False
 
 
 class ProductionConfig(Config):
@@ -37,6 +46,8 @@ class ProductionConfig(Config):
     SESSION_COOKIE_SECURE = True  # Strict HTTPS in production
     # In production, require SECRET_KEY strictly from environment (no insecure fallback)
     SECRET_KEY = None
+    PROXY_FIX_ENABLED = True      # Enabled for single-hop trusted edge proxy
+    PROXY_FIX_HOPS = 1            # Strictly 1 trusted proxy hop in Phase 5.1
 
 
 config_by_name = {
