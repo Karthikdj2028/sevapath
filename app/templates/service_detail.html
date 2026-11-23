@@ -3,10 +3,10 @@
 {% block title %}{{ service.name }} – {{ t('app_name') }}{% endblock %}
 
 {% block content %}
-<div class="container py-5" data-service-slug="{{ service.slug }}" data-lang="{{ current_lang }}">
+<div class="container py-4" data-service-slug="{{ service.slug }}" data-lang="{{ current_lang }}">
   <!-- Breadcrumb -->
-  <nav aria-label="breadcrumb" class="mb-4">
-    <ol class="breadcrumb">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">{{ t('nav_home') }}</a></li>
       <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}#services-section">{{ t('nav_services') }}</a></li>
       <li class="breadcrumb-item active" aria-current="page">{{ service.name }}</li>
@@ -65,13 +65,21 @@
     </div>
 
     <!-- Actions: Download PDF and Print -->
-    <div class="d-flex flex-wrap gap-2 pt-3 border-top mt-3 justify-content-end">
-      <a href="{{ url_for('reports.download_pdf', slug=service.slug) }}" class="btn btn-outline-primary btn-sm fw-semibold">
-        📥 {{ t('btn_download_pdf', 'Download PDF Guide') }}
-      </a>
-      <a href="{{ url_for('reports.print_checklist', slug=service.slug, lang=current_lang) }}" class="btn btn-outline-secondary btn-sm fw-semibold" target="_blank">
-        🖨️ {{ t('btn_print_view', 'Printable Checklist') }}
-      </a>
+    <div class="d-flex flex-wrap gap-2 pt-3 border-top mt-3 justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-2">
+        <span id="saveStatusIndicator" class="save-feedback-badge d-none" aria-live="polite">
+          <span id="saveStatusIcon">✓</span>
+          <span id="saveStatusText">{{ t('toast_saved') }}</span>
+        </span>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('reports.download_pdf', slug=service.slug) }}" class="btn btn-outline-primary btn-sm fw-semibold">
+          📥 {{ t('btn_download_pdf', 'Download PDF Guide') }}
+        </a>
+        <a href="{{ url_for('reports.print_checklist', slug=service.slug, lang=current_lang) }}" class="btn btn-outline-secondary btn-sm fw-semibold" target="_blank">
+          🖨️ {{ t('btn_print_view', 'Printable Checklist') }}
+        </a>
+      </div>
     </div>
   </div>
 
@@ -84,247 +92,396 @@
     </div>
   </div>
 
-  <!-- DFA Preparation Engine Live Dashboard -->
-  <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3" id="dfaDashboard">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <!-- STAGE 1: APPLICABILITY QUESTIONS -->
+  <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3" id="stage1Card">
+    <div class="d-flex justify-content-between align-items-start mb-3">
       <div>
-        <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-1">
-          ⚙️ {{ t('dfa_engine_badge') }}
-        </span>
-        <h3 class="fw-bold mb-0 text-dark">{{ t('readiness_status') }}</h3>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-1">Stage 1</span>
+        <h3 class="fw-bold mb-1 text-dark">{{ t('applicability_prompt') }}</h3>
+        <p class="text-secondary small mb-0">
+          {{ t('decision_alert', 'Please indicate whether each document applies to your application circumstances, then check off items as you prepare them.') }}
+        </p>
       </div>
-      <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-light text-dark border fs-6 px-3 py-2" id="stateLabelBadge">
-          {{ t('current_state_label') }}: <strong class="text-primary" id="currentStateDisplay">q₀</strong>
-        </span>
-        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2" id="acceptanceBadge">
-          ⏳ {{ t('status_not_started') }}
-        </span>
-        <button class="btn btn-outline-danger btn-sm" id="btnResetProgress" title="{{ t('btn_reset_progress') }}">
+    </div>
+
+    <div class="alert alert-light border small text-muted mb-3 py-2 px-3">
+      ℹ️ {{ t('step_2_desc', 'Go through the step-by-step document checklist and identify missing proofs before visiting e-Sevai.') }}
+    </div>
+
+    <!-- Nativity Composite Alternative Callout if applicable -->
+    {% if service.slug == 'nativity-certificate' %}
+    <div class="alert alert-info py-2 px-3 small mb-3">
+      <strong>{{ t('nativity_alt_rule_title') }}</strong>
+      {{ t('nativity_alt_rule_desc') }}
+    </div>
+    {% endif %}
+
+    <div class="list-group list-group-flush" id="applicabilityListGroup">
+      {% for req in requirements %}
+      <div class="list-group-item px-0 py-3 border-bottom" id="app-row-{{ req.requirement_code }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+          <div class="flex-grow-1">
+            <h5 class="fw-semibold mb-1 text-dark">{{ req.title }}</h5>
+            <p class="text-secondary small mb-1">{{ req.description }}</p>
+            {% if req.help_text %}
+            <div class="small text-muted bg-light p-2 rounded border mb-2">
+              ℹ️ <em>{{ req.help_text }}</em>
+            </div>
+            {% endif %}
+          </div>
+          <div>
+            {% if req.presentation_category == 'alternative_option' %}
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ t('cat_alt') }}</span>
+            {% elif req.presentation_category == 'verified_mandatory' %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ t('mandatory_badge') }}</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ t('cat_unconfirmed') }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Applicability Decision Radio Buttons -->
+        <div class="mb-2 p-2 bg-light rounded border">
+          <span class="small fw-semibold text-dark d-block mb-1">{{ t('applicability_prompt') }}</span>
+          <div class="btn-group btn-group-sm w-100 app-radio-group" role="group" aria-label="Applicability for {{ req.title }}">
+            <input type="radio" class="btn-check app-radio"
+                   name="app-{{ req.requirement_code }}"
+                   id="app-yes-{{ req.requirement_code }}"
+                   value="applicable"
+                   data-req-code="{{ req.requirement_code }}"
+                   {% if req.applicability == 'applicable' %}checked{% endif %}>
+            <label class="btn btn-outline-success" for="app-yes-{{ req.requirement_code }}">
+              ✓ {{ t('applicable') }}
+            </label>
+
+            <input type="radio" class="btn-check app-radio"
+                   name="app-{{ req.requirement_code }}"
+                   id="app-no-{{ req.requirement_code }}"
+                   value="not_applicable"
+                   data-req-code="{{ req.requirement_code }}"
+                   {% if req.applicability == 'not_applicable' %}checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="app-no-{{ req.requirement_code }}">
+              ✕ {{ t('not_applicable') }}
+            </label>
+
+            <input type="radio" class="btn-check app-radio"
+                   name="app-{{ req.requirement_code }}"
+                   id="app-und-{{ req.requirement_code }}"
+                   value="undetermined"
+                   data-req-code="{{ req.requirement_code }}"
+                   {% if req.applicability == 'undetermined' %}checked{% endif %}>
+            <label class="btn btn-outline-warning" for="app-und-{{ req.requirement_code }}">
+              ? {{ t('undetermined') }}
+            </label>
+          </div>
+        </div>
+
+        <!-- Alternative Selector for Composite Requirements -->
+        {% if req.logical_group == 'nativity_residence_5yr' %}
+        <div class="mb-2 p-3 bg-light rounded border alt-selector-box" id="alt-box-{{ req.requirement_code }}" style="{% if req.applicability != 'applicable' %}display: none;{% endif %}">
+          <span class="small fw-semibold text-primary d-block mb-2">{{ t('which_doc_do_you_have') }}</span>
+          <div class="form-check small mb-1">
+            <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-school" value="School Education Certificate" {% if req.selected_alternative == 'School Education Certificate' or not req.selected_alternative %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
+            <label class="form-check-label" for="alt-school">1. School Education Certificate (Study in TN for 5+ years)</label>
+          </div>
+          <div class="form-check small mb-1">
+            <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-emp" value="Employment Details" {% if req.selected_alternative == 'Employment Details' %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
+            <label class="form-check-label" for="alt-emp">2. Employment Details in Tamil Nadu</label>
+          </div>
+          <div class="form-check small">
+            <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-res" value="Continuous residence proof for last 5 years" {% if req.selected_alternative == 'Continuous residence proof for last 5 years' %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
+            <label class="form-check-label" for="alt-res">3. Proof for continuous residence in Tamil Nadu for 5 years</label>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- STAGE 2: DOCUMENT POSSESSION CHECKLIST -->
+  <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3" id="stage2Card">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-1">Stage 2</span>
+        <h3 class="fw-bold mb-1 text-dark">{{ t('checklist_print_title') }}</h3>
+      </div>
+      <span class="badge bg-secondary-subtle text-secondary small">Citizen Controlled</span>
+    </div>
+    <p class="text-secondary small mb-3">
+      {{ t('step_3_desc') }}
+    </p>
+
+    <div class="list-group list-group-flush" id="checklistGroup">
+      {% for req in requirements %}
+      <div class="checklist-item list-group-item px-3 py-3 mb-2 rounded border {% if req.is_completed and req.applicability == 'applicable' %}bg-success-subtle{% elif req.applicability == 'not_applicable' %}bg-light{% endif %}"
+           id="item-row-{{ req.requirement_code }}"
+           data-req-code="{{ req.requirement_code }}">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+          <div class="flex-grow-1">
+            <h5 class="fw-semibold mb-1 text-dark">{{ req.title }}</h5>
+            <p class="text-secondary small mb-0">{{ req.description }}</p>
+          </div>
+          <div class="text-end">
+            {% if req.presentation_category == 'alternative_option' %}
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ t('cat_alt') }}</span>
+            {% elif req.presentation_category == 'verified_mandatory' %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ t('mandatory_badge') }}</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ t('cat_unconfirmed') }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Preparation Checkbox Area -->
+        <div class="prep-check-container mt-2" id="prep-box-{{ req.requirement_code }}" style="{% if req.applicability != 'applicable' %}display: none;{% endif %}">
+          <div class="form-check pt-1 d-flex align-items-center gap-2">
+            <input class="form-check-input checklist-checkbox"
+                   type="checkbox"
+                   value="{{ req.requirement_code }}"
+                   id="check-{{ req.requirement_code }}"
+                   data-req-code="{{ req.requirement_code }}"
+                   {% if req.is_completed %}checked{% endif %}>
+            <label class="form-check-label fw-semibold text-dark cursor-pointer pt-1" for="check-{{ req.requirement_code }}" id="label-check-{{ req.requirement_code }}">
+              {% if req.is_completed %}{{ t('item_ready_label') }}{% else %}{{ t('item_pending_label') }}{% endif %}
+            </label>
+          </div>
+        </div>
+
+        <!-- Non-applicable Notice -->
+        <div class="not-applicable-notice small text-muted py-1" id="not-app-notice-{{ req.requirement_code }}" style="{% if req.applicability != 'not_applicable' %}display: none;{% endif %}">
+          <span class="badge bg-secondary-subtle text-secondary me-1">✕</span> {{ t('not_applicable') }}
+        </div>
+
+        <!-- Undecided Notice -->
+        <div class="undetermined-notice small text-warning-emphasis py-1" id="und-notice-{{ req.requirement_code }}" style="{% if req.applicability != 'undetermined' %}display: none;{% endif %}">
+          <span class="badge bg-warning-subtle text-warning-emphasis me-1">?</span> {{ t('undetermined') }} — <em>{{ t('applicability_prompt') }}</em>
+        </div>
+
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- STAGE 3: PREPARATION STATUS EVALUATION -->
+  <div class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3" id="stage3Card">
+    <div class="mb-3">
+      <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-1">Stage 3</span>
+      <h3 class="fw-bold mb-1 text-dark">{{ t('status_eval_title') }}</h3>
+      <p class="text-secondary small mb-3">{{ t('btn_check_status_desc') }}</p>
+    </div>
+
+    <!-- Prominent Status Evaluation Trigger Button -->
+    <div class="mb-4">
+      <button type="button" class="btn btn-primary btn-lg fw-bold px-4 py-3 shadow-sm w-100 d-flex align-items-center justify-content-center gap-2" id="btnCheckPreparationStatus">
+        <span class="fs-5">🔍</span>
+        <span>{{ t('btn_check_status') }}</span>
+      </button>
+    </div>
+
+    <!-- Live Status Evaluation Results Section -->
+    <div id="statusEvaluationSection" class="border rounded-3 p-4 bg-light-subtle">
+      <!-- Status Banner -->
+      <div id="evaluationStatusBanner" class="alert alert-secondary d-flex align-items-center gap-3 mb-3 py-3 px-4 rounded-3" role="alert">
+        <div class="fs-3" id="evaluationStatusIcon">⏳</div>
+        <div>
+          <h5 class="fw-bold mb-1" id="evaluationStatusHeading">{{ t('status_eval_title') }}</h5>
+          <p class="mb-0 small" id="evaluationStatusMessage">{{ t('status_need_action') }}</p>
+        </div>
+      </div>
+
+      <!-- Preparation Counter Summary -->
+      <div class="card border-0 shadow-sm p-3 mb-3 bg-white rounded-3">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="small fw-bold text-dark" id="statusCounterText">
+            {{ t('status_summary_counter').format(completed=progress.completed_count|default(0), total=progress.total_applicable_requirements|default(requirements|length), percent=progress.readiness_percentage|default(0)) }}
+          </span>
+          <span class="fw-bold fs-5 text-primary" id="statusPercentBadge">
+            {{ progress.readiness_percentage|default(0) }}%
+          </span>
+        </div>
+        <div class="progress" style="height: 12px;">
+          <div id="statusProgressBar"
+               class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+               role="progressbar"
+               style="width: {{ progress.readiness_percentage|default(0) }}%;"
+               aria-valuenow="{{ progress.readiness_percentage|default(0) }}"
+               aria-valuemin="0"
+               aria-valuemax="100">
+          </div>
+        </div>
+      </div>
+
+      <!-- Specific Item Breakdown Lists -->
+      <div class="row g-3 mb-3">
+        <!-- Ready Documents -->
+        <div class="col-md-4">
+          <div class="card h-100 border-0 p-3 bg-white shadow-sm rounded-3">
+            <h6 class="text-success small fw-bold mb-2">✓ {{ t('applicable_prepared_heading', 'Ready Documents') }}</h6>
+            <ul class="list-unstyled small mb-0 ps-1" id="evalCompletedDocsList">
+              <li class="text-muted fst-italic">None yet</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Missing Documents -->
+        <div class="col-md-4">
+          <div class="card h-100 border-0 p-3 bg-white shadow-sm rounded-3">
+            <h6 class="text-danger small fw-bold mb-2">● {{ t('applicable_pending_heading', 'Still Needed') }}</h6>
+            <ul class="list-unstyled small mb-0 ps-1" id="evalRemainingDocsList">
+              <li class="text-muted fst-italic">None pending</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Undecided Circumstances -->
+        <div class="col-md-4">
+          <div class="card h-100 border-0 p-3 bg-white shadow-sm rounded-3">
+            <h6 class="text-warning-emphasis small fw-bold mb-2">? {{ t('undetermined_heading', 'Undecided Questions') }}</h6>
+            <ul class="list-unstyled small mb-0 ps-1" id="evalUndeterminedDocsList">
+              <li class="text-muted fst-italic">None</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recommended Next Steps -->
+      <div class="card border-0 p-3 bg-white shadow-sm rounded-3 mb-3">
+        <h6 class="fw-bold text-dark mb-2">📋 {{ t('next_steps_title') }}</h6>
+        <ul class="mb-0 ps-3 small text-secondary">
+          <li class="mb-1">{{ t('next_step_1') }}</li>
+          <li>{{ t('next_step_2') }}</li>
+        </ul>
+      </div>
+
+      <!-- Legal Disclaimer Note -->
+      <div class="alert alert-warning mb-0 py-2 px-3 small border-warning-subtle text-dark">
+        ⚠️ <strong>{{ t('legal_disclaimer_notice') }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLLAPSIBLE TECHNICAL DFA STATE MACHINE DRAWER -->
+  <details id="technicalAutomataDrawer" class="card border-0 shadow-sm p-4 mb-4 bg-white rounded-3">
+    <summary class="fw-bold cursor-pointer text-secondary d-flex justify-content-between align-items-center py-1">
+      <span class="fs-6">⚙️ {{ t('technical_automata_title') }}</span>
+      <span class="badge bg-light text-dark border">DFA (Q, Σ, δ, q₀, F)</span>
+    </summary>
+
+    <div class="pt-3 border-top mt-3">
+      <p class="text-muted small mb-3">
+        {{ t('technical_automata_desc') }}
+      </p>
+
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-light text-dark border fs-6 px-3 py-2" id="stateLabelBadge">
+            {{ t('current_state_label') }}: <strong class="text-primary" id="currentStateDisplay">q₀</strong>
+          </span>
+          <span class="badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2" id="acceptanceBadge">
+            ⏳ {{ t('status_not_started') }}
+          </span>
+        </div>
+        <button class="btn btn-outline-danger btn-sm" id="btnResetProgress" data-bs-toggle="modal" data-bs-target="#resetConfirmModal" title="{{ t('btn_reset_progress') }}">
           ↺ {{ t('btn_reset_progress') }}
         </button>
       </div>
-    </div>
 
-    <!-- Progress Bar -->
-    <div class="mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-1">
-        <span class="small text-muted fw-semibold" id="progressSubtitleDisplay">Applicable Requirement Preparation</span>
-        <span class="fw-bold fs-5 text-primary" id="readinessPercentDisplay">0.0%</span>
-      </div>
-      <div class="progress" style="height: 14px;">
-        <div id="readinessProgressBar"
-             class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-             role="progressbar"
-             style="width: 0%;"
-             aria-valuenow="0"
-             aria-valuemin="0"
-             aria-valuemax="100">
+      <!-- DFA Progress Bar in Technical Drawer -->
+      <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="small text-muted fw-semibold">Automata State Path Progress</span>
+          <span class="fw-bold fs-6 text-primary" id="readinessPercentDisplay">0.0%</span>
         </div>
-      </div>
-    </div>
-
-    <!-- Compact Progress Counters -->
-    <div class="row g-2 text-center pt-2 border-top">
-      <div class="col-3">
-        <span class="text-muted small d-block">Prepared</span>
-        <span class="fw-bold fs-5 text-success" id="completedCountDisplay">0</span>
-      </div>
-      <div class="col-3">
-        <span class="text-muted small d-block">Pending</span>
-        <span class="fw-bold fs-5 text-danger" id="remainingCountDisplay">0</span>
-      </div>
-      <div class="col-3">
-        <span class="text-muted small d-block">Undecided</span>
-        <span class="fw-bold fs-5 text-warning-emphasis" id="undeterminedCountDisplay">{{ requirements|length }}</span>
-      </div>
-      <div class="col-3">
-        <span class="text-muted small d-block">Not Applicable</span>
-        <span class="fw-bold fs-5 text-secondary" id="notApplicableCountDisplay">0</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-4 mb-4">
-    <!-- Left Column: Interactive Document Checklist -->
-    <div class="col-lg-7">
-      <div class="card border-0 shadow-sm p-4 bg-white rounded-3 h-100">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h4 class="fw-bold mb-0">📋 {{ t('checklist_print_title', 'Document Preparation Checklist') }}</h4>
-          <span class="badge bg-secondary-subtle text-secondary small">Citizen Controlled</span>
-        </div>
-        <p class="text-muted small mb-3">
-          {{ t('decision_alert', 'Please indicate whether each document applies to your application circumstances, then check off items as you prepare them.') }}
-        </p>
-
-        <!-- Nativity Callout if applicable -->
-        {% if service.slug == 'nativity-certificate' %}
-        <div class="alert alert-info py-2 px-3 small mb-3">
-          <strong>{{ t('nativity_alt_rule_title', 'Nativity Alternative Proof Rule:') }}</strong>
-          {{ t('nativity_alt_rule_desc', 'Official TNeGA regulations specify 5-year residence evidence as a single composite requirement satisfied by any one of three alternatives. You only need to prepare one valid alternative.') }}
-        </div>
-        {% endif %}
-
-        <div class="list-group list-group-flush" id="checklistGroup">
-          {% for req in requirements %}
-            <div class="list-group-item px-0 py-3 border-bottom checklist-item"
-                 id="item-row-{{ req.requirement_code }}"
-                 data-req-code="{{ req.requirement_code }}">
-
-              <div class="d-flex justify-content-between align-items-start mb-2">
-                <div>
-                  <h5 class="fw-semibold mb-1 req-title" id="title-{{ req.requirement_code }}">
-                    {{ req.title }}
-                  </h5>
-                  <p class="text-secondary small mb-1">{{ req.description }}</p>
-                </div>
-                <div>
-                  {% if req.presentation_category == 'alternative_option' %}
-                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ t('cat_alt', 'Official Alternative Option') }}</span>
-                  {% else %}
-                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ t('cat_unconfirmed', 'TNeGA Listed') }}</span>
-                  {% endif %}
-                </div>
-              </div>
-
-              {% if req.help_text %}
-                <div class="small text-muted bg-light p-2 rounded border mb-2">
-                  ℹ️ <em>{{ req.help_text }}</em>
-                </div>
-              {% endif %}
-
-              <!-- Citizen Applicability Decision Radio Group -->
-              <div class="mb-2 p-2 bg-light-subtle rounded border">
-                <span class="small fw-semibold text-dark d-block mb-1">{{ t('applicability_prompt', 'Does this apply to your circumstances?') }}</span>
-                <div class="btn-group btn-group-sm w-100" role="group" aria-label="Applicability for {{ req.title }}">
-                  <input type="radio" class="btn-check app-radio"
-                         name="app-{{ req.requirement_code }}"
-                         id="app-yes-{{ req.requirement_code }}"
-                         value="applicable"
-                         data-req-code="{{ req.requirement_code }}"
-                         {% if req.applicability == 'applicable' %}checked{% endif %}>
-                  <label class="btn btn-outline-success" for="app-yes-{{ req.requirement_code }}">
-                    ✓ {{ t('applicable', 'Applicable to Me') }}
-                  </label>
-
-                  <input type="radio" class="btn-check app-radio"
-                         name="app-{{ req.requirement_code }}"
-                         id="app-no-{{ req.requirement_code }}"
-                         value="not_applicable"
-                         data-req-code="{{ req.requirement_code }}"
-                         {% if req.applicability == 'not_applicable' %}checked{% endif %}>
-                  <label class="btn btn-outline-secondary" for="app-no-{{ req.requirement_code }}">
-                    ✕ {{ t('not_applicable', 'Not Applicable') }}
-                  </label>
-
-                  <input type="radio" class="btn-check app-radio"
-                         name="app-{{ req.requirement_code }}"
-                         id="app-und-{{ req.requirement_code }}"
-                         value="undetermined"
-                         data-req-code="{{ req.requirement_code }}"
-                         {% if req.applicability == 'undetermined' %}checked{% endif %}>
-                  <label class="btn btn-outline-warning" for="app-und-{{ req.requirement_code }}">
-                    ? {{ t('undetermined', 'Undecided') }}
-                  </label>
-                </div>
-              </div>
-
-              <!-- Alternative Option Selector (for Nativity 5-year proof) -->
-              {% if req.logical_group == 'nativity_residence_5yr' %}
-              <div class="mb-2 p-2 bg-light rounded border alt-selector-box" id="alt-box-{{ req.requirement_code }}" style="{% if req.applicability != 'applicable' %}display: none;{% endif %}">
-                <span class="small fw-semibold text-primary d-block mb-1">Select which alternative proof you are preparing:</span>
-                <div class="form-check small mb-1">
-                  <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-school" value="School Education Certificate" {% if req.selected_alternative == 'School Education Certificate' or not req.selected_alternative %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
-                  <label class="form-check-label" for="alt-school">1. School Education Certificate (Study in TN for 5+ years)</label>
-                </div>
-                <div class="form-check small mb-1">
-                  <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-emp" value="Employment Details" {% if req.selected_alternative == 'Employment Details' %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
-                  <label class="form-check-label" for="alt-emp">2. Employment Details in Tamil Nadu</label>
-                </div>
-                <div class="form-check small">
-                  <input class="form-check-input alt-radio" type="radio" name="alt-choice-{{ req.requirement_code }}" id="alt-res" value="Continuous residence proof for last 5 years" {% if req.selected_alternative == 'Continuous residence proof for last 5 years' %}checked{% endif %} data-req-code="{{ req.requirement_code }}">
-                  <label class="form-check-label" for="alt-res">3. Proof for continuous residence in Tamil Nadu for 5 years</label>
-                </div>
-              </div>
-              {% endif %}
-
-              <!-- Preparation Checkbox (Visible when Applicable) -->
-              <div class="prep-check-container" id="prep-box-{{ req.requirement_code }}" style="{% if req.applicability != 'applicable' %}display: none;{% endif %}">
-                <div class="form-check pt-1">
-                  <input class="form-check-input checklist-checkbox fs-5"
-                         type="checkbox"
-                         value="{{ req.requirement_code }}"
-                         id="check-{{ req.requirement_code }}"
-                         data-req-code="{{ req.requirement_code }}"
-                         {% if req.is_completed %}checked{% endif %}>
-                  <label class="form-check-label fw-semibold text-dark pt-1 cursor-pointer" for="check-{{ req.requirement_code }}">
-                    {{ t('mark_as_prepared', 'I have this document ready') }}
-                  </label>
-                </div>
-              </div>
-
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-
-    <!-- Right Column: Interactive DFA Graph & Summary -->
-    <div class="col-lg-5">
-      <!-- DFA Visualizer Card -->
-      <div class="card border-0 shadow-sm p-4 bg-white rounded-3 mb-4">
-        <div class="mb-3">
-          <div class="d-flex align-items-center justify-content-between">
-            <h5 class="fw-bold mb-0">📊 {{ t('dfa_viz_title') }}</h5>
-            <span class="badge bg-primary">DFA (Q, Σ, δ, q₀, F)</span>
+        <div class="progress" style="height: 10px;">
+          <div id="readinessProgressBar"
+               class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+               role="progressbar"
+               style="width: 0%;"
+               aria-valuenow="0"
+               aria-valuemin="0"
+               aria-valuemax="100">
           </div>
-          <p class="text-muted small mb-0">{{ t('dfa_viz_subtitle') }}</p>
-        </div>
-
-        <!-- SVG Container for DFA Visualizer -->
-        <div id="dfaVizContainer" class="border rounded bg-light p-2 text-center" style="min-height: 220px;">
-          <div class="text-muted py-5 small">Initializing DFA state graph...</div>
-        </div>
-
-        <!-- DFA Graph Legend -->
-        <div class="d-flex flex-wrap gap-2 justify-content-between small text-muted border-top pt-2 mt-2">
-          <span><span class="badge rounded-circle bg-light border text-dark">q₀</span> {{ t('legend_initial') }}</span>
-          <span><span class="badge rounded-circle bg-primary text-white">q</span> {{ t('legend_current') }}</span>
-          <span><span class="badge rounded-circle bg-success text-white">F</span> {{ t('legend_accepting') }}</span>
         </div>
       </div>
 
-      <!-- Preparation Summary Breakdown -->
-      <div class="card border-0 shadow-sm p-4 bg-white rounded-3">
-        <h5 class="fw-bold mb-3">📑 Status Breakdown</h5>
+      <!-- SVG Container for DFA Visualizer -->
+      <div id="dfaVizContainer" class="dfa-scroll-container text-center mb-3" style="min-height: 220px;">
+        <div class="text-muted py-5 small">Initializing DFA state graph...</div>
+      </div>
 
-        <h6 class="text-success small fw-bold mb-2">✓ Prepared Applicable Documents</h6>
-        <ul class="list-unstyled small mb-3 ps-2" id="completedDocsList">
-          <li class="text-muted fst-italic">None yet</li>
-        </ul>
+      <!-- DFA Graph Legend -->
+      <div class="d-flex flex-wrap gap-2 justify-content-between small text-muted border-top pt-2 mt-2">
+        <span><span class="badge rounded-circle bg-light border text-dark">q₀</span> {{ t('legend_initial') }}</span>
+        <span><span class="badge rounded-circle bg-primary text-white">q</span> {{ t('legend_current') }}</span>
+        <span><span class="badge rounded-circle bg-success text-white">F</span> {{ t('legend_accepting') }}</span>
+      </div>
 
-        <h6 class="text-danger small fw-bold mb-2">● Pending Applicable Documents</h6>
-        <ul class="list-unstyled small mb-3 ps-2" id="remainingDocsList">
-          <li class="text-muted fst-italic">None pending</li>
-        </ul>
-
-        <h6 class="text-warning-emphasis small fw-bold mb-2">? Awaiting Citizen Decision</h6>
-        <ul class="list-unstyled small mb-0 ps-2" id="undeterminedDocsList">
-          <li class="text-muted fst-italic">None</li>
-        </ul>
+      <!-- Compact Progress Counters -->
+      <div class="row g-2 text-center pt-2 border-top mt-2">
+        <div class="col-3">
+          <span class="text-muted small d-block">Prepared</span>
+          <span class="fw-bold fs-6 text-success" id="completedCountDisplay">0</span>
+        </div>
+        <div class="col-3">
+          <span class="text-muted small d-block">Pending</span>
+          <span class="fw-bold fs-6 text-danger" id="remainingCountDisplay">0</span>
+        </div>
+        <div class="col-3">
+          <span class="text-muted small d-block">Undecided</span>
+          <span class="fw-bold fs-6 text-warning-emphasis" id="undeterminedCountDisplay">{{ requirements|length }}</span>
+        </div>
+        <div class="col-3">
+          <span class="text-muted small d-block">Not Applicable</span>
+          <span class="fw-bold fs-6 text-secondary" id="notApplicableCountDisplay">0</span>
+        </div>
       </div>
     </div>
-  </div>
+  </details>
 
-  <!-- Verification Source & Civic Disclaimer Note -->
-  <div class="card border-warning bg-light p-3 rounded-3">
+  <!-- Verification Source & Official Disclaimer Note -->
+  <div class="card border-warning-subtle bg-light p-3 rounded-3 mb-4">
     <div class="d-flex gap-2">
       <span class="fs-4 text-warning">⚠️</span>
       <div class="small text-secondary">
-        <strong>Official Data Verification:</strong> This service was last verified from
+        <strong>Portal Reference Documentation:</strong> Requirement guidelines cross-referenced with
         <a href="{{ service.source_url }}" target="_blank" rel="noopener noreferrer">{{ service.portal_name }}</a>
-        on <code>{{ service.verification_date }}</code>. SevaPath is an academic civic readiness assistant and does not guarantee certificate approval or eligibility.
+        as of <code>{{ service.verification_date }}</code>. {{ t('legal_disclaimer_notice') }}
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Confirmation Modal -->
+<div class="modal fade" id="resetConfirmModal" tabindex="-1" aria-labelledby="resetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="resetModalLabel">{{ t('modal_reset_title') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0 text-secondary">{{ t('modal_reset_body') }}</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btnCancelReset">
+          {{ t('btn_confirm_reset_cancel') }}
+        </button>
+        <button type="button" class="btn btn-danger" id="btnConfirmReset">
+          {{ t('btn_confirm_reset_proceed') }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Accessible Live Toast Feedback Region -->
+<div id="feedbackToastRegion" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080;" aria-live="polite" aria-atomic="true">
+  <div id="liveFeedbackToast" class="toast align-items-center text-white bg-dark border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body fs-6" id="toastMessage"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
     </div>
   </div>
 </div>
@@ -360,75 +517,212 @@ document.addEventListener("DOMContentLoaded", function () {
   const remainingCountDisplay = document.getElementById("remainingCountDisplay");
   const undeterminedCountDisplay = document.getElementById("undeterminedCountDisplay");
   const notApplicableCountDisplay = document.getElementById("notApplicableCountDisplay");
-  const completedDocsList = document.getElementById("completedDocsList");
-  const remainingDocsList = document.getElementById("remainingDocsList");
-  const undeterminedDocsList = document.getElementById("undeterminedDocsList");
-  const btnReset = document.getElementById("btnResetProgress");
+
+  // Stage 3 Evaluation Elements
+  const btnCheckPreparationStatus = document.getElementById("btnCheckPreparationStatus");
+  const statusEvaluationSection = document.getElementById("statusEvaluationSection");
+  const evaluationStatusBanner = document.getElementById("evaluationStatusBanner");
+  const evaluationStatusIcon = document.getElementById("evaluationStatusIcon");
+  const evaluationStatusHeading = document.getElementById("evaluationStatusHeading");
+  const evaluationStatusMessage = document.getElementById("evaluationStatusMessage");
+  const statusCounterText = document.getElementById("statusCounterText");
+  const statusPercentBadge = document.getElementById("statusPercentBadge");
+  const statusProgressBar = document.getElementById("statusProgressBar");
+  const evalCompletedDocsList = document.getElementById("evalCompletedDocsList");
+  const evalRemainingDocsList = document.getElementById("evalRemainingDocsList");
+  const evalUndeterminedDocsList = document.getElementById("evalUndeterminedDocsList");
+
+  // Save Status Indicator & Toasts
+  const saveStatusIndicator = document.getElementById("saveStatusIndicator");
+  const saveStatusIcon = document.getElementById("saveStatusIcon");
+  const saveStatusText = document.getElementById("saveStatusText");
+  const liveFeedbackToastEl = document.getElementById("liveFeedbackToast");
+  const toastMessage = document.getElementById("toastMessage");
+  const toastInstance = (window.bootstrap && bootstrap.Toast) ? new bootstrap.Toast(liveFeedbackToastEl, { delay: 3500 }) : null;
+
+  // Reset Modal Elements
+  const btnResetProgress = document.getElementById("btnResetProgress");
+  const btnConfirmReset = document.getElementById("btnConfirmReset");
+  const btnCancelReset = document.getElementById("btnCancelReset");
+  const resetModalEl = document.getElementById("resetConfirmModal");
+  const resetModalInstance = (window.bootstrap && bootstrap.Modal) ? new bootstrap.Modal(resetModalEl) : null;
+
+  // Localized Strings Map
+  const I18N = {
+    toastSaved: "{{ t('toast_saved') }}",
+    toastErrorSave: "{{ t('toast_error_save') }}",
+    statusReadyToApply: "{{ t('status_ready_to_apply') }}",
+    statusNeedAction: "{{ t('status_need_action') }}",
+    statusEvalTitle: "{{ t('status_eval_title') }}",
+    itemReadyLabel: "{{ t('item_ready_label') }}",
+    itemPendingLabel: "{{ t('item_pending_label') }}",
+    statusUndetermined: "{{ t('status_undetermined') }}",
+    notApplicable: "{{ t('not_applicable') }}",
+    applicabilityPrompt: "{{ t('applicability_prompt') }}",
+    summaryCounterPattern: "{{ t('status_summary_counter') }}"
+  };
+
+  // State cache
+  let lastServerProgress = null;
+  let lastServerRequirements = null;
+
+  // Show Toast Message
+  function showToast(message, type) {
+    if (!liveFeedbackToastEl || !toastMessage) return;
+    toastMessage.textContent = message;
+    liveFeedbackToastEl.className = "toast align-items-center text-white border-0 " + (type === "danger" ? "bg-danger" : "bg-dark");
+    if (toastInstance) {
+      toastInstance.show();
+    }
+  }
+
+  // Visual Saving Indicator
+  let activeMutationsCount = 0;
+  function updateSavingIndicator(isSaving, hasError) {
+    if (!saveStatusIndicator) return;
+    saveStatusIndicator.classList.remove("d-none");
+    if (isSaving) {
+      saveStatusIcon.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+      saveStatusText.textContent = "Saving...";
+      saveStatusIndicator.style.backgroundColor = "#f1f5f9";
+      saveStatusIndicator.style.color = "#334155";
+    } else if (hasError) {
+      saveStatusIcon.innerHTML = "✕";
+      saveStatusText.textContent = I18N.toastErrorSave;
+      saveStatusIndicator.style.backgroundColor = "#fef2f2";
+      saveStatusIndicator.style.color = "#991b1b";
+    } else {
+      saveStatusIcon.innerHTML = "✓";
+      saveStatusText.textContent = I18N.toastSaved;
+      saveStatusIndicator.style.backgroundColor = "#ecfdf5";
+      saveStatusIndicator.style.color = "#065f46";
+      setTimeout(() => {
+        if (activeMutationsCount === 0) {
+          saveStatusIndicator.classList.add("d-none");
+        }
+      }, 3000);
+    }
+  }
+
+  // Request Concurrency Queue with Non-Poisoning Recovery
+  let mutationQueue = Promise.resolve();
+
+  function enqueueMutation(actionFn) {
+    activeMutationsCount++;
+    try {
+      updateSavingIndicator(true, false);
+    } catch (_) {}
+
+    const opPromise = new Promise((resolve, reject) => {
+      mutationQueue = mutationQueue
+        .then(async () => {
+          try {
+            const res = await actionFn();
+            try {
+              updateSavingIndicator(false, false);
+            } catch (_) {}
+            resolve(res);
+          } catch (err) {
+            try {
+              console.error("Mutation failed:", err);
+            } catch (_) {}
+            try {
+              updateSavingIndicator(false, true);
+            } catch (_) {}
+            try {
+              showToast(I18N.toastErrorSave, "danger");
+            } catch (_) {}
+            reject(err);
+          } finally {
+            activeMutationsCount = Math.max(0, activeMutationsCount - 1);
+          }
+        })
+        .catch(() => {}); // Guaranteed internal recovery: queue tail never rejects
+    });
+
+    return opPromise;
+  }
 
   // Fetch initial state via HttpOnly cookie
   function fetchState() {
-    fetch(`/api/service/${slug}/state?lang=${lang}`, {
+    return fetch(`/api/service/${slug}/state?lang=${lang}`, {
       credentials: "same-origin"
     })
       .then(res => res.json())
       .then(data => {
         if (data.status === "success") {
           if (data.csrf_token) csrfToken = data.csrf_token;
+          lastServerProgress = data.progress;
+          lastServerRequirements = data.requirements;
           updateUI(data.progress, data.visualization, data.requirements);
         }
       })
       .catch(err => console.error("Error loading DFA state:", err));
   }
 
+  // Format summary counter with actual numbers
+  function formatSummaryCounter(completed, total, percent) {
+    return I18N.summaryCounterPattern
+      .replace("{completed}", completed)
+      .replace("{total}", total)
+      .replace("{percent}", percent);
+  }
+
   // Update DOM components reactively
   function updateUI(progress, visualization, requirements) {
     if (!progress) return;
+    lastServerProgress = progress;
 
     // 1. Current State Label
-    currentStateDisplay.textContent = progress.state_label;
+    if (currentStateDisplay) currentStateDisplay.textContent = progress.state_label;
 
-    // 2. Readiness & Progress Bar
+    // 2. Readiness & Technical Progress Bar
     const readiness = progress.readiness_percentage;
-    readinessPercentDisplay.textContent = `${readiness}%`;
-    readinessProgressBar.style.width = `${readiness}%`;
-    readinessProgressBar.setAttribute("aria-valuenow", readiness);
-
-    if (progress.is_accepting) {
-      readinessProgressBar.className = "progress-bar bg-success";
-      acceptanceBadge.className = "badge bg-success fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "✓ {{ t('status_complete', 'Preparation Complete') }}";
-    } else if (progress.is_sink) {
-      readinessProgressBar.className = "progress-bar bg-danger";
-      acceptanceBadge.className = "badge bg-danger fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "✕ Error State (q_sink)";
-    } else if (progress.readiness_stage === "undetermined") {
-      readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-warning";
-      acceptanceBadge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "⏳ {{ t('status_undetermined', 'Decisions Pending') }}";
-    } else if (progress.readiness_stage === "not_started") {
-      readinessProgressBar.className = "progress-bar bg-secondary";
-      acceptanceBadge.className = "badge bg-secondary-subtle text-secondary border fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "○ {{ t('status_not_started', 'Not Started') }}";
-    } else {
-      readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
-      acceptanceBadge.className = "badge bg-primary-subtle text-primary border border-primary fs-6 px-3 py-2";
-      acceptanceBadge.innerHTML = "⏳ {{ t('status_in_progress', 'In Progress') }}";
+    if (readinessPercentDisplay) readinessPercentDisplay.textContent = `${readiness}%`;
+    if (readinessProgressBar) {
+      readinessProgressBar.style.width = `${readiness}%`;
+      readinessProgressBar.setAttribute("aria-valuenow", readiness);
     }
 
-    // 3. Counters
-    completedCountDisplay.textContent = progress.completed_count;
-    remainingCountDisplay.textContent = progress.remaining_count;
+    if (acceptanceBadge) {
+      if (progress.is_accepting) {
+        if (readinessProgressBar) readinessProgressBar.className = "progress-bar bg-success";
+        acceptanceBadge.className = "badge bg-success fs-6 px-3 py-2";
+        acceptanceBadge.innerHTML = "✓ {{ t('status_complete', 'Preparation Complete') }}";
+      } else if (progress.is_sink) {
+        if (readinessProgressBar) readinessProgressBar.className = "progress-bar bg-danger";
+        acceptanceBadge.className = "badge bg-danger fs-6 px-3 py-2";
+        acceptanceBadge.innerHTML = "✕ Error State (q_sink)";
+      } else if (progress.readiness_stage === "undetermined") {
+        if (readinessProgressBar) readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-warning";
+        acceptanceBadge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning fs-6 px-3 py-2";
+        acceptanceBadge.innerHTML = "⏳ {{ t('status_undetermined', 'Decisions Pending') }}";
+      } else if (progress.readiness_stage === "not_started") {
+        if (readinessProgressBar) readinessProgressBar.className = "progress-bar bg-secondary";
+        acceptanceBadge.className = "badge bg-secondary-subtle text-secondary border fs-6 px-3 py-2";
+        acceptanceBadge.innerHTML = "○ {{ t('status_not_started', 'Not Started') }}";
+      } else {
+        if (readinessProgressBar) readinessProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
+        acceptanceBadge.className = "badge bg-primary-subtle text-primary border border-primary fs-6 px-3 py-2";
+        acceptanceBadge.innerHTML = "⏳ {{ t('status_in_progress', 'In Progress') }}";
+      }
+    }
+
+    // 3. Technical Drawer Compact Counters
+    if (completedCountDisplay) completedCountDisplay.textContent = progress.completed_count;
+    if (remainingCountDisplay) remainingCountDisplay.textContent = progress.remaining_count;
     if (undeterminedCountDisplay) undeterminedCountDisplay.textContent = progress.undetermined_count;
     if (notApplicableCountDisplay) notApplicableCountDisplay.textContent = progress.not_applicable_count;
 
     // 4. Update Requirements UI rows if list provided
     if (requirements) {
+      lastServerRequirements = requirements;
       requirements.forEach(req => {
         const code = req.requirement_code;
         const app = req.applicability;
         const isDone = req.is_completed === 1;
 
-        // Sync radio
+        // Sync Stage 1 Applicability Radios
         const yesRadio = document.getElementById(`app-yes-${code}`);
         const noRadio = document.getElementById(`app-no-${code}`);
         const undRadio = document.getElementById(`app-und-${code}`);
@@ -436,17 +730,27 @@ document.addEventListener("DOMContentLoaded", function () {
         if (noRadio && app === "not_applicable") noRadio.checked = true;
         if (undRadio && app === "undetermined") undRadio.checked = true;
 
-        // Toggle prep box visibility
-        const prepBox = document.getElementById(`prep-box-${code}`);
+        // Toggle Stage 1 Alternative Choice Box
         const altBox = document.getElementById(`alt-box-${code}`);
-        if (prepBox) prepBox.style.display = (app === "applicable") ? "block" : "none";
         if (altBox) altBox.style.display = (app === "applicable") ? "block" : "none";
 
-        // Sync checkbox
+        // Toggle Stage 2 Checklist Checkbox vs Notices
+        const prepBox = document.getElementById(`prep-box-${code}`);
+        const notAppNotice = document.getElementById(`not-app-notice-${code}`);
+        const undNotice = document.getElementById(`und-notice-${code}`);
         const cb = document.getElementById(`check-${code}`);
-        if (cb) cb.checked = isDone;
+        const label = document.getElementById(`label-check-${code}`);
 
-        // Highlight row
+        if (prepBox) prepBox.style.display = (app === "applicable") ? "block" : "none";
+        if (notAppNotice) notAppNotice.style.display = (app === "not_applicable") ? "block" : "none";
+        if (undNotice) undNotice.style.display = (app === "undetermined") ? "block" : "none";
+
+        if (cb) cb.checked = isDone;
+        if (label) {
+          label.textContent = isDone ? I18N.itemReadyLabel : I18N.itemPendingLabel;
+        }
+
+        // Highlight Stage 2 Row
         const row = document.getElementById(`item-row-${code}`);
         if (row) {
           row.classList.remove("bg-success-subtle", "bg-light");
@@ -459,32 +763,8 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
-    // 5. Summary Breakdown Lists
-    if (progress.completed_documents.length === 0) {
-      completedDocsList.innerHTML = '<li class="text-muted fst-italic">None yet</li>';
-    } else {
-      completedDocsList.innerHTML = progress.completed_documents.map(d =>
-        `<li class="text-success fw-semibold">✓ ${d.name_en || d.key}</li>`
-      ).join("");
-    }
-
-    if (progress.remaining_documents.length === 0) {
-      remainingDocsList.innerHTML = '<li class="text-muted fst-italic">None pending</li>';
-    } else {
-      remainingDocsList.innerHTML = progress.remaining_documents.map(d =>
-        `<li class="text-danger fw-semibold">● ${d.name_en || d.key}</li>`
-      ).join("");
-    }
-
-    if (undeterminedDocsList) {
-      if (progress.undetermined_documents.length === 0) {
-        undeterminedDocsList.innerHTML = '<li class="text-muted fst-italic">None</li>';
-      } else {
-        undeterminedDocsList.innerHTML = progress.undetermined_documents.map(d =>
-          `<li class="text-warning-emphasis">? ${d.name_en || d.key}</li>`
-        ).join("");
-      }
-    }
+    // 5. Update Stage 3 Status Evaluation Section
+    updateEvaluationSection(progress);
 
     // 6. Render DFA Visualization
     if (visualization) {
@@ -492,38 +772,134 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // Handle Applicability Radio Toggles
+  // Update Stage 3 Evaluation View
+  function updateEvaluationSection(progress) {
+    if (!progress) return;
+
+    const totalReq = progress.total_applicable_requirements;
+    const completed = progress.completed_count;
+    const remaining = progress.remaining_count;
+    const undetermined = progress.undetermined_count;
+    const percent = progress.readiness_percentage;
+
+    // Progress Counter and Bar
+    if (statusCounterText) {
+      statusCounterText.textContent = formatSummaryCounter(completed, totalReq, percent);
+    }
+    if (statusPercentBadge) {
+      statusPercentBadge.textContent = `${percent}%`;
+    }
+    if (statusProgressBar) {
+      statusProgressBar.style.width = `${percent}%`;
+      statusProgressBar.setAttribute("aria-valuenow", percent);
+    }
+
+    // Classification of Status: 3 Distinct Outcomes
+    if (progress.is_accepting && undetermined === 0) {
+      // Outcome 1: Ready - Preparation checklist complete
+      evaluationStatusBanner.className = "alert alert-success d-flex align-items-center gap-3 mb-3 py-3 px-4 rounded-3";
+      evaluationStatusIcon.textContent = "✓";
+      evaluationStatusHeading.textContent = "{{ t('status_complete', 'Preparation Checklist Complete') }}";
+      evaluationStatusMessage.textContent = I18N.statusReadyToApply;
+      if (statusProgressBar) statusProgressBar.className = "progress-bar bg-success";
+    } else if (undetermined > 0 && remaining === 0) {
+      // Outcome 3A: Needs clarification - Applicability undecided
+      evaluationStatusBanner.className = "alert alert-warning d-flex align-items-center gap-3 mb-3 py-3 px-4 rounded-3";
+      evaluationStatusIcon.textContent = "ℹ️";
+      evaluationStatusHeading.textContent = "{{ t('status_undetermined', 'Applicability Decisions Pending') }}";
+      evaluationStatusMessage.textContent = I18N.statusNeedAction + " " + I18N.applicabilityPrompt;
+      if (statusProgressBar) statusProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-warning";
+    } else if (undetermined > 0 && remaining > 0) {
+      // Both missing documents and undecided applicability
+      evaluationStatusBanner.className = "alert alert-warning d-flex align-items-center gap-3 mb-3 py-3 px-4 rounded-3";
+      evaluationStatusIcon.textContent = "⚠️";
+      evaluationStatusHeading.textContent = "{{ t('status_need_action') }}";
+      evaluationStatusMessage.textContent = I18N.statusNeedAction + " (" + remaining + " documents needed, " + undetermined + " questions undecided).";
+      if (statusProgressBar) statusProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-warning";
+    } else {
+      // Outcome 2: Incomplete - Documents still needed
+      evaluationStatusBanner.className = "alert alert-danger d-flex align-items-center gap-3 mb-3 py-3 px-4 rounded-3";
+      evaluationStatusIcon.textContent = "●";
+      evaluationStatusHeading.textContent = "{{ t('status_in_progress', 'Preparation In Progress') }}";
+      evaluationStatusMessage.textContent = I18N.statusNeedAction;
+      if (statusProgressBar) statusProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
+    }
+
+    // Breakdown Lists
+    if (evalCompletedDocsList) {
+      if (progress.completed_documents.length === 0) {
+        evalCompletedDocsList.innerHTML = '<li class="text-muted fst-italic">None yet</li>';
+      } else {
+        evalCompletedDocsList.innerHTML = progress.completed_documents.map(d =>
+          `<li class="text-success fw-semibold mb-1">✓ ${d.name_en || d.key}</li>`
+        ).join("");
+      }
+    }
+
+    if (evalRemainingDocsList) {
+      if (progress.remaining_documents.length === 0) {
+        evalRemainingDocsList.innerHTML = '<li class="text-muted fst-italic">None pending</li>';
+      } else {
+        evalRemainingDocsList.innerHTML = progress.remaining_documents.map(d =>
+          `<li class="text-danger fw-semibold mb-1">● ${d.name_en || d.key}</li>`
+        ).join("");
+      }
+    }
+
+    if (evalUndeterminedDocsList) {
+      if (progress.undetermined_documents.length === 0) {
+        evalUndeterminedDocsList.innerHTML = '<li class="text-muted fst-italic">None</li>';
+      } else {
+        evalUndeterminedDocsList.innerHTML = progress.undetermined_documents.map(d =>
+          `<li class="text-warning-emphasis fw-semibold mb-1">? ${d.name_en || d.key}</li>`
+        ).join("");
+      }
+    }
+  }
+
+  // Handle Stage 1 Applicability Radio Changes
   document.querySelectorAll(".app-radio").forEach(radio => {
     radio.addEventListener("change", function () {
       const reqCode = this.getAttribute("data-req-code");
       const applicability = this.value;
 
-      fetch(`/api/service/${slug}/applicability`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrfToken
-        },
-        body: JSON.stringify({
-          requirement_code: reqCode,
-          applicability: applicability,
-          lang: lang
+      enqueueMutation(() => {
+        return fetch(`/api/service/${slug}/applicability`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrfToken
+          },
+          body: JSON.stringify({
+            requirement_code: reqCode,
+            applicability: applicability,
+            lang: lang
+          })
         })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          updateUI(data.progress, data.visualization, data.requirements);
-        } else {
-          alert("Error: " + (data.error || "Failed to update applicability"));
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            updateUI(data.progress, data.visualization, data.requirements);
+            showToast(I18N.toastSaved, "success");
+          } else {
+            throw new Error(data.error || "Failed to update applicability");
+          }
+        });
+      }).catch(err => {
+        // Revert radio button on error
+        if (lastServerRequirements) {
+          const prevReq = lastServerRequirements.find(r => r.requirement_code === reqCode);
+          if (prevReq) {
+            const prevRadio = document.querySelector(`input[name="app-${reqCode}"][value="${prevReq.applicability}"]`);
+            if (prevRadio) prevRadio.checked = true;
+          }
         }
-      })
-      .catch(err => console.error("Applicability update error:", err));
+      });
     });
   });
 
-  // Handle Alternative Radio Choice Toggles
+  // Handle Alternative Radio Choice Changes (Nativity)
   document.querySelectorAll(".alt-radio").forEach(radio => {
     radio.addEventListener("change", function () {
       const reqCode = this.getAttribute("data-req-code");
@@ -531,94 +907,160 @@ document.addEventListener("DOMContentLoaded", function () {
       const cb = document.getElementById(`check-${reqCode}`);
       const isCompleted = cb ? cb.checked : false;
 
-      fetch(`/api/service/${slug}/toggle`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrfToken
-        },
-        body: JSON.stringify({
-          requirement_code: reqCode,
-          is_completed: isCompleted,
-          selected_alternative: selectedAlt,
-          lang: lang
+      enqueueMutation(() => {
+        return fetch(`/api/service/${slug}/toggle`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrfToken
+          },
+          body: JSON.stringify({
+            requirement_code: reqCode,
+            is_completed: isCompleted,
+            selected_alternative: selectedAlt,
+            lang: lang
+          })
         })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          updateUI(data.progress, data.visualization, null);
-        }
-      })
-      .catch(err => console.error("Alternative select error:", err));
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            updateUI(data.progress, data.visualization, null);
+            showToast(I18N.toastSaved, "success");
+          } else {
+            throw new Error(data.error || "Failed to update alternative choice");
+          }
+        });
+      });
     });
   });
 
-  // Handle Checkbox Toggles
+  // Handle Stage 2 Checkbox Changes
   document.querySelectorAll(".checklist-checkbox").forEach(cb => {
     cb.addEventListener("change", function () {
       const reqCode = this.getAttribute("data-req-code");
       const isCompleted = this.checked;
 
-      // Check if alternative selected
       let selectedAlt = null;
       const checkedAlt = document.querySelector(`input[name="alt-choice-${reqCode}"]:checked`);
       if (checkedAlt) selectedAlt = checkedAlt.value;
 
-      fetch(`/api/service/${slug}/toggle`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrfToken
-        },
-        body: JSON.stringify({
-          requirement_code: reqCode,
-          is_completed: isCompleted,
-          selected_alternative: selectedAlt,
-          lang: lang
+      // Optimistic label update
+      const label = document.getElementById(`label-check-${reqCode}`);
+      if (label) {
+        label.textContent = isCompleted ? I18N.itemReadyLabel : I18N.itemPendingLabel;
+      }
+
+      enqueueMutation(() => {
+        return fetch(`/api/service/${slug}/toggle`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrfToken
+          },
+          body: JSON.stringify({
+            requirement_code: reqCode,
+            is_completed: isCompleted,
+            selected_alternative: selectedAlt,
+            lang: lang
+          })
         })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          updateUI(data.progress, data.visualization, null);
-        } else {
-          alert("Error: " + (data.error || "Failed to update"));
-          cb.checked = !isCompleted;
-        }
-      })
-      .catch(err => {
-        console.error("Toggle error:", err);
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            updateUI(data.progress, data.visualization, null);
+            showToast(I18N.toastSaved, "success");
+          } else {
+            throw new Error(data.error || "Failed to toggle document completion");
+          }
+        });
+      }).catch(err => {
+        // Revert checkbox on error
         cb.checked = !isCompleted;
+        if (label) {
+          label.textContent = cb.checked ? I18N.itemReadyLabel : I18N.itemPendingLabel;
+        }
       });
     });
   });
 
-  // Handle Reset Progress
-  if (btnReset) {
-    btnReset.addEventListener("click", function () {
-      if (!confirm("Are you sure you want to reset your preparation progress for this service?")) return;
+  // Accessible Card-Level Click Behavior for Stage 2 Items
+  document.querySelectorAll(".checklist-item").forEach(row => {
+    row.addEventListener("click", function (e) {
+      // Ignore clicks on buttons, inputs, labels, links, radios, or alternative selectors
+      if (e.target.closest("input, label, button, a, .btn-group, .alt-selector-box")) {
+        return;
+      }
+      const cb = row.querySelector(".checklist-checkbox");
+      const reqCode = row.getAttribute("data-req-code");
+      const prepBox = document.getElementById(`prep-box-${reqCode}`);
+      if (cb && !cb.disabled && prepBox && prepBox.style.display !== "none") {
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+  });
 
-      fetch(`/api/service/${slug}/reset`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrfToken
-        },
-        body: JSON.stringify({
-          lang: lang
+  // Stage 3 "Check My Preparation Status" Button Handler
+  if (btnCheckPreparationStatus) {
+    btnCheckPreparationStatus.addEventListener("click", function () {
+      enqueueMutation(() => {
+        return fetchState().then(() => {
+          if (statusEvaluationSection) {
+            statusEvaluationSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }
+          showToast(I18N.statusEvalTitle, "info");
+        });
+      });
+    });
+  }
+
+  // Modal Focus Management
+  if (resetModalEl) {
+    resetModalEl.addEventListener("shown.bs.modal", function () {
+      if (btnCancelReset) btnCancelReset.focus();
+    });
+    resetModalEl.addEventListener("hidden.bs.modal", function () {
+      if (btnResetProgress) btnResetProgress.focus();
+    });
+  }
+
+  // Handle Reset Confirmation
+  if (btnConfirmReset) {
+    btnConfirmReset.addEventListener("click", function () {
+      if (resetModalInstance) {
+        resetModalInstance.hide();
+      }
+
+      enqueueMutation(() => {
+        // Lock controls during reset
+        document.querySelectorAll(".app-radio, .checklist-checkbox, .alt-radio").forEach(el => el.disabled = true);
+
+        return fetch(`/api/service/${slug}/reset`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrfToken
+          },
+          body: JSON.stringify({
+            lang: lang
+          })
         })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          fetchState();
-        }
-      })
-      .catch(err => console.error("Reset error:", err));
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            showToast("{{ t('btn_confirm_reset_proceed') }}", "success");
+            return fetchState();
+          } else {
+            throw new Error(data.error || "Failed to reset progress");
+          }
+        })
+        .finally(() => {
+          document.querySelectorAll(".app-radio, .checklist-checkbox, .alt-radio").forEach(el => el.disabled = false);
+        });
+      });
     });
   }
 

@@ -120,6 +120,32 @@ TRANSLATIONS = {
         "session_advisory_title": "Anonymous Session Notice",
         "session_advisory_body": "Your checklist is linked to this browser's anonymous session. The session expires after 14 days without activity. Clearing this browser's cookies or using private browsing may make your progress inaccessible. SevaPath does not collect personal credentials and cannot recover an expired or deleted anonymous session.",
 
+        # Phase 6 Checkpoint 3C: Plain-Language Civic & Accessibility Additions
+        "checklist_heading_mandatory": "1. Confirmed Mandatory Documents (Where Verified)",
+        "checklist_heading_conditional": "2. Specific Documents (Based on Your Circumstances)",
+        "checklist_heading_optional": "3. Additional Supporting Documents (Optional)",
+        "btn_check_status": "Check My Preparation Status",
+        "btn_check_status_desc": "Review what you have ready and what you still need before visiting e-Sevai.",
+        "status_eval_title": "Preparation Status Summary",
+        "status_ready_to_apply": "Your preparation checklist is complete! You have all required documents ready.",
+        "status_need_action": "Action needed: Some required documents are still missing or undecided.",
+        "next_steps_title": "Recommended Next Steps",
+        "next_step_1": "Keep all original documents along with at least 2 clear photocopies.",
+        "next_step_2": "Visit your nearest e-Sevai centre or apply online through the official portal.",
+        "legal_disclaimer_notice": "Notice: SevaPath is an informational document preparation assistant. It does not issue official certificates or guarantee government approval.",
+        "modal_reset_title": "Reset Preparation Checklist?",
+        "modal_reset_body": "This will clear all checkmarks and decisions you have selected for this service. You will need to check them again.",
+        "btn_confirm_reset_proceed": "Yes, Clear Checklist",
+        "btn_confirm_reset_cancel": "No, Keep My Progress",
+        "toast_saved": "Progress saved",
+        "toast_error_save": "Could not save. Please check your internet connection.",
+        "technical_automata_title": "Technical Verification Graph (DFA State Machine)",
+        "technical_automata_desc": "Live Deterministic Finite Automaton (DFA) state tracker for academic evaluation, diagnostics, and order-independent verification.",
+        "item_ready_label": "I have this document ready",
+        "item_pending_label": "Document still needed",
+        "which_doc_do_you_have": "Which document do you have?",
+        "status_summary_counter": "{completed} of {total} required documents ready ({percent}%)",
+
         # Footer
         "footer_disclaimer": "SevaPath is an educational civic assistance system developed for Tamil Nadu citizens. Always verify with official Government of Tamil Nadu portals (tnesevai.tn.gov.in).",
         "footer_rights": "SevaPath Open Source Project. Built for public benefit.",
@@ -240,11 +266,38 @@ TRANSLATIONS = {
         "session_advisory_title": "அநாமதேய அமர்வு வழிகாட்டுதல்",
         "session_advisory_body": "உங்கள் சரிபார்ப்புப் பட்டியல் இந்த உலாவியின் அநாமதேய அமர்வுடன் (Anonymous Session) இணைக்கப்பட்டுள்ளது. எந்தச் செயல்பாடும் இன்றி 14 நாட்களுக்குப் பிறகு இந்த அமர்வு காலாவதியாகும். இந்த உலாவியின் நினைவகத்தை (Cookies) அழிப்பதோ அல்லது தனிப்பட்ட உலாவல் (Private Browsing) முறையைப் பயன்படுத்துவதோ உங்கள் முன்னேற்றத்தை அணுக முடியாமல் செய்யலாம். சேவாபாத் தனிப்பட்ட நற்சான்றிதழ்களைச் சேகரிப்பதில்லை மற்றும் காலாவதியான அல்லது நீக்கப்பட்ட அநாமதேய அமர்வை மீட்டெடுக்க முடியாது.",
 
+        # Phase 6 Checkpoint 3C: Plain-Language Civic & Accessibility Additions
+        "checklist_heading_mandatory": "1. உறுதிப்படுத்தப்பட்ட கட்டாய ஆவணங்கள்",
+        "checklist_heading_conditional": "2. உங்கள் நிலைக்குத் தேவையான குறிப்பிட்ட ஆவணங்கள்",
+        "checklist_heading_optional": "3. கூடுதல் உதவி ஆவணங்கள் (இருந்தால் போதுமானது)",
+        "btn_check_status": "எனது ஆவண தயார்நிலையைச் சரிபார்க்க",
+        "btn_check_status_desc": "இ-சேவை மையத்திற்குச் செல்லும் முன் எவை தயார், எவை இன்னும் தேவை என்பதைப் பார்க்கவும்.",
+        "status_eval_title": "ஆவண தயார்நிலை சுருக்கம்",
+        "status_ready_to_apply": "உங்கள் தயாரிப்புப் பட்டியல் நிறைவடைந்தது! தேவையான அனைத்து ஆவணங்களும் தயாராக உள்ளன.",
+        "status_need_action": "கவனம் தேவை: சில ஆவணங்கள் இன்னும் தேவைப்படுகின்றன அல்லது முடிவு செய்யப்படவில்லை.",
+        "next_steps_title": "அடுத்த படிகள்",
+        "next_step_1": "அனைத்து அசல் ஆவணங்களுடன் குறைந்தது 2 நகல்களையும் (Photocopy) தயாராக வைக்கவும்.",
+        "next_step_2": "உங்கள் அருகிலுள்ள இ-சேவை மையத்திற்குச் செல்லவும் அல்லது அதிகாரப்பூர்வ தளம் வழியாக விண்ணப்பிக்கவும்.",
+        "legal_disclaimer_notice": "குறிப்பு: சேவாபாத் ஆவண தயார்நிலைக்கான உதவி அமைப்பு மட்டுமே; அதிகாரப்பூர்வ சான்றிதழ்களை வழங்குவதோ அல்லது அரசு ஒப்புதல் உத்தரவாதமோ அளிக்காது.",
+        "modal_reset_title": "தயாரிப்புப் பட்டியலை மீட்டமைக்கவா?",
+        "modal_reset_body": "இச்சேவைக்கு நீங்கள் தேர்ந்தெடுத்த அனைத்து குறிப்புகளும் அழிக்கப்படும். நீங்கள் மீண்டும் முதலில் இருந்து தேர்ந்தெடுக்க வேண்டும்.",
+        "btn_confirm_reset_proceed": "ஆம், பட்டியலை மீட்டமை",
+        "btn_confirm_reset_cancel": "இல்லை, ரத்து செய்",
+        "toast_saved": "சேமிக்கப்பட்டது",
+        "toast_error_save": "சேமிக்க முடியவில்லை. இணைய இணைப்பைச் சரிபார்க்கவும்.",
+        "technical_automata_title": "தொழில்நுட்ப சரிபார்ப்பு வரைபடம் (DFA நிலை இயந்திரம்)",
+        "technical_automata_desc": "கல்வி மதிப்பீடு, கணினி ஆய்வு மற்றும் வரிசை-சாரா சரிபார்ப்புக்கான நேரலை DFA நிலை வரைபடம்.",
+        "item_ready_label": "இந்த ஆவணம் என்னிடம் தயாராக உள்ளது",
+        "item_pending_label": "ஆவணம் இன்னும் தேவைப்படுகிறது",
+        "which_doc_do_you_have": "உங்களிடம் எந்த ஆவணம் உள்ளது?",
+        "status_summary_counter": "தேவையான {total} ஆவணங்களில் {completed} ஆவணங்கள் தயார் ({percent}%)",
+
         # Footer
         "footer_disclaimer": "சேவாபாத் என்பது தமிழ்நாடு குடிமக்களுக்கான கல்வி மற்றும் உதவி பயன்பாட்டு அமைப்பாகும். அதிகாரப்பூர்வ விவரங்களுக்கு தமிழ்நாடு அரசு இணையதளத்தை (tnesevai.tn.gov.in) அணுகவும்.",
         "footer_rights": "சேவாபாத் திறந்த மூல திட்டம். மக்கள் பயன்பாட்டிற்காக உருவாக்கப்பட்டது.",
     }
 }
+
 
 def get_translation(key: str, lang: str = "en", default: str = "") -> str:
     """Returns translated string for given key and language code."""
