@@ -1,0 +1,40 @@
+[Unit]
+Description=SevaPath Database Backup Service (Phase 5.3)
+Documentation=file:///opt/sevapath/docs/BACKUP_AND_RECOVERY.md
+After=network.target
+RequiresMountsFor=/var/backups/sevapath /var/lib/sevapath
+
+[Service]
+Type=oneshot
+User=sevapath
+Group=sevapath
+EnvironmentFile=-/etc/sevapath/production.env
+ExecStart=/opt/sevapath/deployment/scripts/backup.sh
+
+# Security & Sandboxing Hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Filesystem Access Boundaries
+ReadWritePaths=/var/backups/sevapath /var/lib/sevapath
+ReadOnlyPaths=/etc/sevapath /opt/sevapath
+
+# Logging & Resource Limits
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=600
