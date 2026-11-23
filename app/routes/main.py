@@ -7,6 +7,7 @@ service preparation details, language switcher, and system health check.
 
 from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify, current_app, make_response
 from app.models.database import (
+    get_db,
     get_services,
     get_service_by_slug,
     get_citizen_dashboard_summary,
@@ -124,7 +125,25 @@ def set_language(lang_code):
 
 @main_bp.route("/health")
 def health_check():
-    """System health check endpoint for monitoring and automated tests."""
+    """System health check endpoint for monitoring, liveness, and readiness probes."""
+    check = request.args.get("check")
+    if check == "ready":
+        try:
+            db = get_db()
+            db.execute("SELECT 1;").fetchone()
+            return jsonify({
+                "status": "ready",
+                "service": "SevaPath",
+                "database": "connected"
+            }), 200
+        except Exception:
+            return jsonify({
+                "status": "unavailable",
+                "service": "SevaPath",
+                "database": "error",
+                "message": "Database readiness check failed"
+            }), 503
+
     return jsonify({
         "status": "healthy",
         "service": "SevaPath",

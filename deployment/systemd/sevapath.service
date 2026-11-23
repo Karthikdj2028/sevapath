@@ -1,0 +1,28 @@
+[Unit]
+Description=SevaPath Civic Preparation Platform (Production WSGI)
+After=network.target
+
+[Service]
+Type=exec
+User=sevapath
+Group=sevapath
+WorkingDirectory=/opt/sevapath/current
+EnvironmentFile=/etc/sevapath/production.env
+ExecStart=/opt/sevapath/venv/bin/gunicorn --config /opt/sevapath/current/gunicorn.conf.py wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5s
+
+# Security Sandbox Hardening
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sevapath/shared/instance /opt/sevapath/shared/logs /opt/sevapath/shared/backups
+ProtectKernelTunables=true
+ProtectControlGroups=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

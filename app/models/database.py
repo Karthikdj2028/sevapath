@@ -135,9 +135,11 @@ def get_db() -> sqlite3.Connection:
     if "db" not in g:
         db_path = current_app.config["DATABASE_PATH"]
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        g.db = sqlite3.connect(db_path)
+        g.db = sqlite3.connect(db_path, timeout=5.0)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON;")
+        g.db.execute("PRAGMA busy_timeout = 5000;")
+        g.db.execute("PRAGMA synchronous = NORMAL;")
     return g.db
 
 
@@ -151,9 +153,11 @@ def close_db(e=None):
 def init_db_connection(db_path: str) -> sqlite3.Connection:
     """Helper to get a direct SQLite connection outside of Flask request context."""
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
 
@@ -238,6 +242,8 @@ def run_migrations(db: sqlite3.Connection):
 def init_db(app=None):
     """Initializes schema, executes migrations, and seeds initial services."""
     def _run(db):
+        db.execute("PRAGMA journal_mode = WAL;")
+        db.execute("PRAGMA synchronous = NORMAL;")
         db.executescript(SCHEMA_SQL)
         run_migrations(db)
         from app.data.seeds import seed_initial_services
